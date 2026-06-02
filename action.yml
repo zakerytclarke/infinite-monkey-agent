@@ -1,0 +1,41 @@
+name: 'AI Code Reviewer'
+description: 'Reviews code diffs using Gemini or other models and optionally runs tests to locate failures'
+author: 'zakerytclarke'
+branding:
+  icon: 'code'
+  color: 'blue'
+inputs:
+  openrouter_api_key:
+    description: 'OpenRouter API Key'
+    required: false
+  openai_api_key:
+    description: 'OpenAI API Key'
+    required: false
+  gemini_api_key:
+    description: 'Gemini API Key'
+    required: false
+  model:
+    description: 'Model to use'
+    required: false
+    default: 'google/gemini-2.5-pro'
+  custom_prompt:
+    description: 'Custom instructions, code guidelines, or style preferences for the review'
+    required: false
+  github_token:
+    description: 'GitHub token for posting comments'
+    required: false
+    default: ${{ github.token }}
+  run_tests:
+    description: 'Auto-detect and run tests, feeding failures to LLM (true/false)'
+    required: false
+    default: 'true'
+  test_command:
+    description: 'Custom command to execute tests'
+    required: false
+  max_steps:
+    description: 'Maximum step limit for the autonomous developer agent loop'
+    required: false
+    default: '15'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
