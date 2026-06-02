@@ -68,6 +68,21 @@ def execute_tool(tool: str, args: dict) -> str:
             output = f"{res.stdout}\n{res.stderr}".strip()
             return f"Command finished with return code {res.returncode}. Output:\n{output}"
             
+        elif tool == "deleteFile":
+            target_path = args.get("path")
+            if not target_path:
+                return "Error: Missing required argument 'path'."
+            safe_path = resolve_safe_path(target_path)
+            if not os.path.exists(safe_path):
+                return f"Error: File not found: {target_path}"
+            if os.path.isdir(safe_path):
+                import shutil
+                shutil.rmtree(safe_path)
+                return f"Successfully deleted directory {target_path} and all its contents."
+            else:
+                os.remove(safe_path)
+                return f"Successfully deleted file {target_path}."
+
         elif tool == "finish":
             return f"Task completed: {args.get('summary', '')}"
             
@@ -185,15 +200,17 @@ You have access to the following tools:
    Reads the text content of a file in the workspace.
 3. writeFile: { "path": "path/to/file.ts", "content": "..." }
    Creates or overwrites a file with new content.
-4. runCommand: { "command": "npm test" }
+4. deleteFile: { "path": "path/to/file.ts" }
+   Deletes a file or directory in the workspace.
+5. runCommand: { "command": "npm test" }
    Runs a command (like running tests, compiling, or formatting) in the terminal and returns its console output.
-5. finish: { "summary": "Detailed explanation of code changes made..." }
+6. finish: { "summary": "Detailed explanation of code changes made..." }
    Call this tool once changes are complete, compiling, and all tests pass.
 
 Your output must be a single, raw JSON object matching this schema (with no enclosing markdown blocks):
 {
   "thought": "Your step-by-step reasoning explaining why you want to invoke this tool...",
-  "tool": "listFiles" | "readFile" | "writeFile" | "runCommand" | "finish",
+  "tool": "listFiles" | "readFile" | "writeFile" | "deleteFile" | "runCommand" | "finish",
   "arguments": { ... }
 }
 
@@ -255,7 +272,7 @@ Guidelines:
                             "type": "OBJECT",
                             "properties": {
                                 "thought": {"type": "STRING"},
-                                "tool": {"type": "STRING", "enum": ["listFiles", "readFile", "writeFile", "runCommand", "finish"]},
+                                "tool": {"type": "STRING", "enum": ["listFiles", "readFile", "writeFile", "deleteFile", "runCommand", "finish"]},
                                 "arguments": {"type": "OBJECT"}
                             },
                             "required": ["thought", "tool", "arguments"]
@@ -289,16 +306,20 @@ Guidelines:
             return "Failed: Empty response from LLM."
 
         try:
-            # Strip markdown blocks
+            # Robust JSON extraction
             cleaned = raw_response_text.strip()
-            if cleaned.startswith("```json"):
-                cleaned = cleaned[7:]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            
-            action = json.loads(cleaned.strip())
+            first_brace = cleaned.find("{")
+            last_brace = cleaned.rfind("}")
+            if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
+                raise ValueError("No JSON object found in LLM response.")
+            json_str = cleaned[first_brace:last_brace + 1]
+            action = json.loads(json_str)
         except Exception as e:
             print("Failed to parse LLM action JSON:", raw_response_text)
+            conversation_history.append({
+                "role": "assistant",
+                "content": raw_response_text
+            })
             conversation_history.append({
                 "role": "user",
                 "content": f"Error: Your output was not valid JSON. Please reply with a single JSON object matching the schema. Error: {e}"

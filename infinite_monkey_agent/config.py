@@ -7,7 +7,7 @@ class Config:
         self.openrouter_api_key = None
         self.openai_api_key = None
         self.gemini_api_key = None
-        self.model = "google/gemini-2.5-pro"
+        self.model = "gpt-5.5-instant"
         self.custom_prompt = None
         self.github_token = None
         self.run_tests = True
@@ -139,5 +139,13 @@ def load_config(args=None) -> Config:
             i += 1
         else:
             i += 1
+
+    # 5. Model default fallback based on active API keys
+    if config.openai_api_key and not config.openrouter_api_key and not config.gemini_api_key:
+        if config.model in ("google/gemini-2.5-pro", "gpt-4o") or not config.model:
+            config.model = "gpt-5.5-instant"
+    elif config.gemini_api_key and not config.openrouter_api_key and not config.openai_api_key:
+        if config.model in ("gpt-5.5-instant", "gpt-4o") or not config.model:
+            config.model = "gemini-2.5-pro"
 
     return config

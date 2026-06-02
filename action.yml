@@ -15,9 +15,9 @@ inputs:
     description: 'Gemini API Key'
     required: false
   model:
-    description: 'Model to use (default: google/gemini-2.5-pro)'
+    description: 'Model to use (default: gpt-5.5-instant)'
     required: false
-    default: 'google/gemini-2.5-pro'
+    default: 'gpt-5.5-instant'
   custom_prompt:
     description: 'Custom instructions, code guidelines, or style preferences'
     required: false
@@ -57,12 +57,12 @@ runs:
       run: |
         infinite-monkey-agent
       env:
-        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
-        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        AI_REVIEWER_MODEL: ${{ inputs.model }}
-        AI_REVIEWER_PROMPT: ${{ inputs.custom_prompt }}
-        AI_REVIEWER_RUN_TESTS: ${{ inputs.run_tests }}
-        AI_REVIEWER_TEST_COMMAND: ${{ inputs.test_command }}
-        AI_REVIEWER_MAX_STEPS: ${{ inputs.max_steps }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key || env.OPENROUTER_API_KEY }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key || env.OPENAI_API_KEY }}
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key || env.GEMINI_API_KEY }}
+        GITHUB_TOKEN: ${{ inputs.github_token || env.GITHUB_TOKEN }}
+        AI_REVIEWER_MODEL: ${{ inputs.model || env.AI_REVIEWER_MODEL }}
+        AI_REVIEWER_PROMPT: ${{ inputs.custom_prompt || env.AI_REVIEWER_PROMPT }}
+        AI_REVIEWER_RUN_TESTS: ${{ inputs.run_tests || env.AI_REVIEWER_RUN_TESTS }}
+        AI_REVIEWER_TEST_COMMAND: ${{ inputs.test_command || env.AI_REVIEWER_TEST_COMMAND }}
+        AI_REVIEWER_MAX_STEPS: ${{ inputs.max_steps || env.AI_REVIEWER_MAX_STEPS }}

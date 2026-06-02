@@ -84,7 +84,7 @@ jobs:
         uses: zakerytclarke/infinite-monkey-agent@main
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          model: 'google/gemini-2.5-pro'
+          model: 'gpt-5.5-instant'
           run_tests: 'true'
 ```
 
@@ -116,7 +116,7 @@ jobs:
         uses: zakerytclarke/infinite-monkey-agent@main
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          model: 'google/gemini-2.5-pro'
+          model: 'gpt-5.5-instant'
           run_tests: 'true'
           max_steps: '15' # Limit development loops to control execution time
 ```
