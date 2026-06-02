@@ -15,9 +15,9 @@ inputs:
     description: 'Gemini API Key'
     required: false
   model:
-    description: 'Model to use (default: gpt-5.5-instant)'
+    description: 'Model to use (default: gpt-5.4)'
     required: false
-    default: 'gpt-5.5-instant'
+    default: 'gpt-5.4'
   custom_prompt:
     description: 'Custom instructions, code guidelines, or style preferences'
     required: false
