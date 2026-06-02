@@ -1,0 +1,26 @@
+name: AI Pull Request Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Runs the action locally from the root folder (uses the bundled dist/index.js in the repo)
+      - name: Run AI Code Reviewer
+        uses: ./
+        with:
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          model: 'google/gemini-2.5-pro'
+          run_tests: 'true'

@@ -1,0 +1,28 @@
+name: AI Developer Agent
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Runs the action locally from the root folder (uses the bundled dist/index.js in the repo)
+      - name: Run AI Developer Agent
+        uses: ./
+        with:
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          model: 'google/gemini-2.5-pro'
+          run_tests: 'true'
+          max_steps: '15'
