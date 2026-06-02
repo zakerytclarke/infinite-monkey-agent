@@ -1,0 +1,38 @@
+name: AI Comment Trigger (Monkey)
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  run-agent:
+    if: |
+      contains(github.event.comment.body, '/monkey') ||
+      contains(github.event.comment.body, '🐒') ||
+      contains(github.event.comment.body, '🙊') ||
+      contains(github.event.comment.body, '🙉') ||
+      contains(github.event.comment.body, '🙈')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # If it's a PR, checkout the PR branch head; otherwise checkout default branch (main/master)
+          ref: ${{ github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+          fetch-depth: 0
+
+      - name: Run Infinite Monkey Agent
+        uses: ./
+        with:
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          github_token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          model: 'gpt-5.4'
+          run_tests: 'true'
+          max_steps: '15'

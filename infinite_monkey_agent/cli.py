@@ -123,6 +123,20 @@ async def async_main():
         if not run_mode:
             if config.github_event_name == "issues":
                 run_mode = "develop"
+            elif config.github_event_name == "issue_comment":
+                # Check if this comment is on a pull request or an issue
+                event_path = config.github_event_path
+                is_pr = False
+                if event_path and os.path.exists(event_path):
+                    try:
+                        import json
+                        with open(event_path, "r", encoding="utf-8") as f:
+                            event_data = json.load(f)
+                            if event_data.get("issue", {}).get("pull_request") is not None:
+                                is_pr = True
+                    except Exception:
+                        pass
+                run_mode = "review" if is_pr else "develop"
             else:
                 run_mode = "review" # default behavior
 

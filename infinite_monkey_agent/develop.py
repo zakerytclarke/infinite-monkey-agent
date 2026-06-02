@@ -38,11 +38,38 @@ async def develop_issue(config: Config):
     issue_number = issue.get("number")
     default_branch = event_payload.get("repository", {}).get("default_branch") or config.branch or "master"
 
-    print(f"\n📋 Processing Issue #{issue_number}: \"{issue_title}\"")
-    print(f"Target base branch: \"{default_branch}\"")
+    # 2. Fetch all comments for context if this is an issue
+    comments_context = ""
+    if gh_token and gh_repo and issue_number:
+        try:
+            print("Fetching issue comments for conversation context...")
+            comments_url = f"https://api.github.com/repos/{gh_repo}/issues/{issue_number}/comments"
+            headers = {
+                "Authorization": f"token {gh_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "infinite-monkey-agent"
+            }
+            res = requests.get(comments_url, headers=headers, timeout=20)
+            if res.status_code == 200:
+                comments_list = res.json()
+                if comments_list:
+                    comments_context = "\n\n--- Issue Conversation History ---\n"
+                    for idx, c in enumerate(comments_list, 1):
+                        user = c.get("user", {}).get("login", "unknown")
+                        body = c.get("body", "")
+                        comments_context += f"Comment #{idx} by @{user}:\n{body}\n\n"
+            else:
+                print(f"Warning: Failed to fetch comments: {res.status_code} {res.reason}")
+        except Exception as e:
+            print(f"Warning: Error fetching comments: {e}")
+
+    full_issue_body = issue_body
+    if comments_context:
+        full_issue_body += comments_context
 
     # 2. Execute developer agent
-    summary_of_changes = await run_developer_agent(config, issue_title, issue_body)
+    summary_of_changes = await run_developer_agent(config, issue_title, full_issue_body)
 
     # Simulation in mock mode
     if config.mock:
@@ -76,7 +103,12 @@ async def develop_issue(config: Config):
         subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
         subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
         
-        subprocess.run(["git", "checkout", "-b", patch_branch], check=True)
+        # Safely checkout branch
+        res = subprocess.run(["git", "show-ref", f"refs/heads/{patch_branch}"], capture_output=True)
+        if res.returncode == 0:
+            subprocess.run(["git", "checkout", patch_branch], check=True)
+        else:
+            subprocess.run(["git", "checkout", "-b", patch_branch], check=True)
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", f"AI: resolve issue #{issue_number} - {issue_title}"], check=True)
         
@@ -129,3 +161,60 @@ async def develop_issue(config: Config):
         print(f"Failed to post issue comment: {res.status_code} {res.reason}\n{res.text}")
     else:
         print("Successfully posted issue comment.")
+
+    # 7. Run direct PR review immediately to bypass GITHUB_TOKEN triggers block
+    print("\n🔍 Running direct AI PR review on the created Pull Request...")
+    try:
+        from infinite_monkey_agent.git_utils import get_diff, parse_diff
+        from infinite_monkey_agent.agent import run_reviewer_agent
+        from infinite_monkey_agent.tester import run_tests
+        from infinite_monkey_agent.github_utils import post_github_review
+
+        # Run verification tests
+        test_passed = True
+        test_output = None
+        if config.run_tests:
+            test_result = run_tests(config.test_command)
+            if test_result.run:
+                test_passed = test_result.passed
+                if not test_passed:
+                    test_output = test_result.output
+
+        # Get the diff between base branch and HEAD
+        diff_text = get_diff(None, default_branch)
+        file_diffs = parse_diff(diff_text)
+        if file_diffs:
+            # Create a temporary mock GITHUB_EVENT_PATH payload
+            import tempfile
+            mock_event = {
+                "pull_request": {
+                    "number": pr_number,
+                    "head": {
+                        "sha": subprocess.check_output(["git", "rev-parse", "HEAD"], encoding="utf-8").strip()
+                    }
+                }
+            }
+            with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as f:
+                json.dump(mock_event, f)
+                temp_event_path = f.name
+
+            # Create a review config that points to the new event file
+            review_config = Config()
+            for attr in dir(config):
+                if not attr.startswith("__") and not callable(getattr(config, attr)):
+                    setattr(review_config, attr, getattr(config, attr))
+            review_config.github_event_path = temp_event_path
+
+            # Run reviewer agent and post comments
+            annotations = await run_reviewer_agent(review_config, file_diffs, test_output)
+            post_github_review(review_config, file_diffs, annotations, test_passed)
+
+            # Cleanup
+            try:
+                os.remove(temp_event_path)
+            except Exception:
+                pass
+        else:
+            print("No file diff found compared to the base branch. Skipping review.")
+    except Exception as e:
+        print(f"Warning: Failed to run direct PR review: {e}")
