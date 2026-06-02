@@ -3,6 +3,8 @@ import json
 import subprocess
 import requests
 from infinite_monkey_agent.config import Config
+from infinite_monkey_agent.git_utils import FileDiff
+from infinite_monkey_agent.llm import generate_mock_review
 
 # Recursive list files helper
 def list_files(dir_path: str = ".") -> list[str]:
@@ -352,3 +354,217 @@ Guidelines:
 
     print("Reached maximum agent steps without finishing.")
     return "Developer agent reached the maximum number of steps without calling 'finish'."
+
+async def run_reviewer_agent(config: Config, file_diffs: list[FileDiff], test_output: str = None) -> list[dict]:
+    if config.mock:
+        print("Using mock code reviewer reviews...")
+        mock_res = generate_mock_review(file_diffs, test_output)
+        return mock_res.get("reviews", [])
+
+    api_key = config.openrouter_api_key or config.openai_api_key or config.gemini_api_key
+    if not api_key:
+        raise ValueError("API key is required for reviewer agent execution.")
+
+    collected_comments = []
+
+    # Safe tool execution inside reviewer
+    def execute_reviewer_tool(tool: str, args: dict) -> str:
+        if tool == "leaveComment":
+            path = args.get("path")
+            line = args.get("line")
+            level = args.get("level", "warning")
+            message = args.get("message")
+            if not path or not line or not message:
+                return "Error: Missing required argument 'path', 'line', or 'message'."
+            try:
+                line_int = int(line)
+            except ValueError:
+                return "Error: 'line' must be an integer."
+            collected_comments.append({
+                "file": path,
+                "line": line_int,
+                "level": level,
+                "message": message
+            })
+            return f"Successfully added review comment on {path} line {line_int}."
+        else:
+            return execute_tool(tool, args)
+
+    # Load custom prompt guidelines from infinitemonkey.md or claude.md
+    additional_guidelines = ""
+    for filename in ["infinitemonkey.md", "claude.md"]:
+        if os.path.exists(filename):
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    additional_guidelines += f"\n\nAdditional Instructions from {filename}:\n" + f.read()
+            except Exception as e:
+                print(f"Warning: Failed to read {filename}: {e}")
+
+    default_prompt = """You are an expert AI code reviewer.
+Your task is to review the git diff of a project, identify bugs, security vulnerabilities, performance issues, logic flaws, code style issues, or general improvements.
+You can read files in the workspace using the provided tools to gain context.
+You MUST leave comments on specific modified lines that concern you using the `leaveComment` tool.
+
+Guidelines:
+1. ONLY comment on line numbers that exist in the *new* version of the files and are actually modified or added in the diff. Check the diff lines starting with '+' and map them to their line numbers in the new file.
+2. DO NOT comment on unmodified lines.
+3. Be specific and constructive. Provide example code fixes where appropriate.
+4. When you are done reviewing and have left all comments, call the `finish` tool.
+"""
+
+    system_prompt = default_prompt + additional_guidelines
+    if config.custom_prompt:
+        system_prompt += f"\n\nAdditional user guidelines/preferences:\n{config.custom_prompt}"
+
+    # Build initial user message with diff and test output
+    diff_text = "\n".join([fd.raw_content for fd in file_diffs])
+    user_message = f"Please review these changes.\n\nHere is the git diff:\n```diff\n{diff_text}\n```"
+    if test_output:
+        user_message += f"\n\nIMPORTANT: The project test suite failed during verification with the following logs:\n```\n{test_output}\n```"
+
+    conversation_history = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+
+    # Setup headers/url similar to developer agent
+    headers = {"Content-Type": "application/json"}
+    url = ""
+    if config.openrouter_api_key:
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers["Authorization"] = f"Bearer {config.openrouter_api_key}"
+        headers["HTTP-Referer"] = "https://github.com/zakerytclarke/infinite-monkey-agent"
+        headers["X-Title"] = "Infinite Monkey Agent"
+    elif config.openai_api_key:
+        url = "https://api.openai.com/v1/chat/completions"
+        headers["Authorization"] = f"Bearer {config.openai_api_key}"
+
+    print(f"Starting autonomous code reviewer loop (Max steps: {config.max_steps})...")
+
+    # Tool description in system prompt for schema
+    tools_prompt = """
+You have access to the following tools:
+1. listFiles: {}
+   Recursively lists files inside the repository (excludes build, node_modules, .git, etc.).
+2. readFile: { "path": "path/to/file.ts" }
+   Reads the text content of a file in the workspace.
+3. leaveComment: { "path": "path/to/file.ts", "line": 42, "level": "notice" | "warning" | "error", "message": "..." }
+   Leaves a review comment on a specific line of a file.
+4. runCommand: { "command": "npm test" }
+   Runs a command (like running tests) and returns console output.
+5. finish: { "summary": "Explanation of your review findings..." }
+   Call this tool once you have completed your review.
+
+Your output must be a single, raw JSON object matching this schema (with no enclosing markdown blocks):
+{
+  "thought": "Your step-by-step reasoning explaining why you want to invoke this tool...",
+  "tool": "listFiles" | "readFile" | "leaveComment" | "runCommand" | "finish",
+  "arguments": { ... }
+}
+"""
+    conversation_history[0]["content"] += tools_prompt
+
+    # Execute loop
+    for step in range(1, config.max_steps + 1):
+        print(f"\n=== Reviewer Step {step} / {config.max_steps} ===")
+        raw_response_text = ""
+        try:
+            if config.gemini_api_key:
+                # Direct Gemini API call with schema
+                model_name = config.model.split("/")[-1] if "/" in config.model else config.model
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={config.gemini_api_key}"
+                contents = []
+                for h in conversation_history:
+                    if h["role"] == "system":
+                        continue
+                    role = "model" if h["role"] == "assistant" else "user"
+                    contents.append({
+                        "role": role,
+                        "parts": [{"text": h["content"]}]
+                    })
+                body = {
+                    "contents": contents,
+                    "systemInstruction": {
+                        "parts": [{"text": conversation_history[0]["content"]}]
+                    },
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "thought": {"type": "STRING"},
+                                "tool": {"type": "STRING", "enum": ["listFiles", "readFile", "leaveComment", "runCommand", "finish"]},
+                                "arguments": {"type": "OBJECT"}
+                            },
+                            "required": ["thought", "tool", "arguments"]
+                        }
+                    }
+                }
+                res = requests.post(url, headers=headers, json=body, timeout=60)
+                if res.status_code != 200:
+                    raise RuntimeError(f"Gemini API call failed: {res.status_code} {res.reason}\n{res.text}")
+                data = res.json()
+                raw_response_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            else:
+                body = {
+                    "model": config.model,
+                    "messages": conversation_history,
+                    "response_format": {"type": "json_object"}
+                }
+                res = requests.post(url, headers=headers, json=body, timeout=60)
+                if res.status_code != 200:
+                    raise RuntimeError(f"LLM API call failed: {res.status_code} {res.reason}\n{res.text}")
+                data = res.json()
+                raw_response_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        except Exception as e:
+            print("Error calling LLM:", e)
+            break
+
+        if not raw_response_text:
+            print("Received empty response from LLM.")
+            break
+
+        try:
+            cleaned = raw_response_text.strip()
+            first_brace = cleaned.find("{")
+            last_brace = cleaned.rfind("}")
+            if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
+                raise ValueError("No JSON object found in LLM response.")
+            json_str = cleaned[first_brace:last_brace + 1]
+            action = json.loads(json_str)
+        except Exception as e:
+            print("Failed to parse LLM action JSON:", raw_response_text)
+            conversation_history.append({
+                "role": "assistant",
+                "content": raw_response_text
+            })
+            conversation_history.append({
+                "role": "user",
+                "content": f"Error: Your output was not valid JSON. Please reply with a single JSON object matching the schema. Error: {e}"
+            })
+            continue
+
+        print(f"🤖 Thought: {action.get('thought', '')}")
+        tool = action.get("tool", "")
+        args = action.get("arguments", {})
+        print(f"Tool call: {tool}")
+
+        if tool == "finish":
+            print(f"\n🎉 Reviewer finished review! Summary:\n{args.get('summary', '')}")
+            break
+
+        # Execute tool
+        tool_output = execute_reviewer_tool(tool, args)
+        print(f"Tool Output length: {len(tool_output)}")
+
+        conversation_history.append({
+            "role": "assistant",
+            "content": raw_response_text
+        })
+        conversation_history.append({
+            "role": "user",
+            "content": f"Tool [{tool}] output:\n{tool_output}"
+        })
+
+    return collected_comments

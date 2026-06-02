@@ -1,11 +1,12 @@
 import sys
+import os
 import asyncio
 from infinite_monkey_agent.config import load_config, Config
 from infinite_monkey_agent.git_utils import get_diff, parse_diff
 from infinite_monkey_agent.tester import run_tests
-from infinite_monkey_agent.llm import get_review_from_llm
 from infinite_monkey_agent.github_utils import print_workflow_annotations, post_github_review
 from infinite_monkey_agent.develop import develop_issue
+from infinite_monkey_agent.agent import run_reviewer_agent
 
 # ANSI escape codes for styling
 RESET = "\033[0m"
@@ -95,9 +96,8 @@ async def run_review_mode(config: Config):
 
     print(f"Found {len(file_diffs)} modified file(s) to review.")
 
-    # 3. Call LLM
-    review_result = get_review_from_llm(config, file_diffs, test_output)
-    annotations = review_result.get("reviews", [])
+    # 3. Call Reviewer Agent Loop
+    annotations = await run_reviewer_agent(config, file_diffs, test_output)
 
     # 4. Publish results
     is_github_action = os.environ.get("GITHUB_ACTIONS") == "true"
