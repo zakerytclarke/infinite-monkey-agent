@@ -50,13 +50,18 @@ def run_tests(custom_command: str = None) -> TestResult:
     print(f"Running tests via: \"{command}\"...")
 
     try:
+        # Ensure PYTHONPATH includes the current working directory so local modules import correctly
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.getcwd() + (os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else "")
+
         # Run with 60-second timeout
         res = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
+            env=env
         )
         passed = (res.returncode == 0)
         output = f"{res.stdout}\n{res.stderr}".strip()

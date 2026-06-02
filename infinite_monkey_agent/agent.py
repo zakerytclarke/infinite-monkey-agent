@@ -60,12 +60,18 @@ def execute_tool(tool: str, args: dict) -> str:
             if not command:
                 return "Error: Missing required argument 'command'."
             print(f"Executing shell command: \"{command}\"")
+            
+            # Ensure PYTHONPATH includes current working directory for imports
+            env = dict(os.environ)
+            env["PYTHONPATH"] = os.getcwd() + (os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else "")
+            
             res = subprocess.run(
                 command,
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
+                env=env
             )
             output = f"{res.stdout}\n{res.stderr}".strip()
             return f"Command finished with return code {res.returncode}. Output:\n{output}"
