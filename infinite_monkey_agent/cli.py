@@ -1,11 +1,11 @@
 import sys
 import asyncio
-from ai_reviewer.config import load_config, Config
-from ai_reviewer.git_utils import get_diff, parse_diff
-from ai_reviewer.tester import run_tests
-from ai_reviewer.llm import get_review_from_llm
-from ai_reviewer.github_utils import print_workflow_annotations, post_github_review
-from ai_reviewer.develop import develop_issue
+from infinite_monkey_agent.config import load_config, Config
+from infinite_monkey_agent.git_utils import get_diff, parse_diff
+from infinite_monkey_agent.tester import run_tests
+from infinite_monkey_agent.llm import get_review_from_llm
+from infinite_monkey_agent.github_utils import print_workflow_annotations, post_github_review
+from infinite_monkey_agent.develop import develop_issue
 
 # ANSI escape codes for styling
 RESET = "\033[0m"

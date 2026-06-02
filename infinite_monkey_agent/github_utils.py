@@ -1,8 +1,8 @@
 import os
 import json
 import requests
-from ai_reviewer.config import Config
-from ai_reviewer.git_utils import FileDiff
+from infinite_monkey_agent.config import Config
+from infinite_monkey_agent.git_utils import FileDiff
 
 def filter_valid_annotations(file_diffs: list[FileDiff], annotations: list[dict]) -> list[dict]:
     valid = []

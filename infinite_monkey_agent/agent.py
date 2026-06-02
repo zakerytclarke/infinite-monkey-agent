@@ -2,7 +2,7 @@ import os
 import json
 import subprocess
 import requests
-from ai_reviewer.config import Config
+from infinite_monkey_agent.config import Config
 
 # Recursive list files helper
 def list_files(dir_path: str = ".") -> list[str]:
@@ -216,8 +216,8 @@ Guidelines:
     if config.openrouter_api_key:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers["Authorization"] = f"Bearer {config.openrouter_api_key}"
-        headers["HTTP-Referer"] = "https://github.com/zakerytclarke/ai-reviewer"
-        headers["X-Title"] = "AI Code Reviewer"
+        headers["HTTP-Referer"] = "https://github.com/zakerytclarke/infinite-monkey-agent"
+        headers["X-Title"] = "Infinite Monkey Agent"
     elif config.openai_api_key:
         url = "https://api.openai.com/v1/chat/completions"
         headers["Authorization"] = f"Bearer {config.openai_api_key}"

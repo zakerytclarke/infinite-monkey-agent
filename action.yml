@@ -1,5 +1,5 @@
-name: 'AI Code Reviewer & Developer Agent'
-description: 'AI-powered code reviewer and autonomous developer agent written in Python'
+name: 'Infinite Monkey Agent'
+description: 'Infinite Monkey Agent: AI-powered code reviewer and autonomous developer agent written in Python'
 author: 'zakerytclarke'
 branding:
   icon: 'code'
@@ -50,12 +50,12 @@ runs:
         if [ -f "$GITHUB_ACTION_PATH/pyproject.toml" ]; then
           pip install "$GITHUB_ACTION_PATH"
         else
-          pip install ai-reviewer
+          pip install infinite-monkey-agent
         fi
-    - name: Run AI Reviewer CLI
+    - name: Run Infinite Monkey Agent CLI
       shell: bash
       run: |
-        ai-reviewer
+        infinite-monkey-agent
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
         OPENAI_API_KEY: ${{ inputs.openai_api_key }}

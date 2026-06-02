@@ -2,8 +2,8 @@ import os
 import json
 import subprocess
 import requests
-from ai_reviewer.config import Config
-from ai_reviewer.agent import run_developer_agent
+from infinite_monkey_agent.config import Config
+from infinite_monkey_agent.agent import run_developer_agent
 
 async def develop_issue(config: Config):
     issue_file = config.issue_file

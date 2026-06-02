@@ -1,7 +1,7 @@
 import json
 import requests
-from ai_reviewer.config import Config
-from ai_reviewer.git_utils import FileDiff, get_full_file_content
+from infinite_monkey_agent.config import Config
+from infinite_monkey_agent.git_utils import FileDiff, get_full_file_content
 
 def generate_mock_review(file_diffs: list[FileDiff], test_output: str = None) -> dict:
     reviews = []
@@ -159,8 +159,8 @@ CRITICAL RULES:
     if config.openrouter_api_key:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers["Authorization"] = f"Bearer {config.openrouter_api_key}"
-        headers["HTTP-Referer"] = "https://github.com/zakerytclarke/ai-reviewer"
-        headers["X-Title"] = "AI Code Reviewer"
+        headers["HTTP-Referer"] = "https://github.com/zakerytclarke/infinite-monkey-agent"
+        headers["X-Title"] = "Infinite Monkey Agent"
         body = {
             "model": config.model,
             "messages": [

@@ -1,7 +1,7 @@
-# 🐍 AI Developer & Code Reviewer (Python Edition)
+# 🐒 Infinite Monkey Agent
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PyPI version](https://img.shields.io/pypi/v/ai-reviewer.svg)](https://pypi.org/project/ai-reviewer/)
+[![PyPI version](https://img.shields.io/pypi/v/infinite-monkey-agent.svg)](https://pypi.org/project/infinite-monkey-agent/)
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-Verified-blue.svg)](action.yml)
 [![Python](https://img.shields.io/badge/Python-%3E%3D3.8-green.svg)](https://python.org)
 
@@ -16,7 +16,7 @@ An intelligent, lightweight, zero-dependency Python package and GitHub Action th
 To install the CLI tool globally or in your local python environment:
 
 ```bash
-pip install ai-reviewer
+pip install infinite-monkey-agent
 ```
 
 To run it locally in development mode from the cloned source directory:
@@ -30,17 +30,17 @@ pip install .
 
 ## 🛠️ CLI Subcommands & Local Usage
 
-Once installed, the CLI tool can be executed using the `ai-reviewer` command:
+Once installed, the CLI tool can be executed using the `infinite-monkey-agent` command:
 
 ### 1. PR Code Review Mode (`review`)
 Runs a git diff against a branch and reviews code modifications.
 
 ```bash
 # Review changes compared to main branch
-ai-reviewer review --branch main
+infinite-monkey-agent review --branch main
 
 # Run review offline on a saved .diff file (mock LLM mode)
-ai-reviewer review --diff-file ./path/to/my.diff --mock
+infinite-monkey-agent review --diff-file ./path/to/my.diff --mock
 ```
 
 ### 2. Autonomous Developer Mode (`develop`)
@@ -48,7 +48,7 @@ Solves an issue in a workspace loop until code compiles and tests pass.
 
 ```bash
 # Run developer agent locally using a mock issue payload
-ai-reviewer develop --issue-file ./issue_payload.json --mock
+infinite-monkey-agent develop --issue-file ./issue_payload.json --mock
 ```
 
 ---
@@ -81,7 +81,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run AI Code Reviewer
-        uses: zakerytclarke/ai-reviewer@main
+        uses: zakerytclarke/infinite-monkey-agent@main
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           model: 'google/gemini-2.5-pro'
@@ -113,7 +113,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run AI Developer Agent
-        uses: zakerytclarke/ai-reviewer@main
+        uses: zakerytclarke/infinite-monkey-agent@main
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           model: 'google/gemini-2.5-pro'

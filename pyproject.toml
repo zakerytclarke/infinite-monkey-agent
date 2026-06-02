@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-reviewer"
+name = "infinite-monkey-agent"
 version = "1.0.0"
 description = "AI-powered code reviewer and autonomous developer agent"
 readme = "README.md"
@@ -22,8 +22,8 @@ dependencies = [
 ]
 
 [project.scripts]
-ai-reviewer = "ai_reviewer.cli:main"
+infinite-monkey-agent = "infinite_monkey_agent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ai_reviewer*"]
+include = ["infinite_monkey_agent*"]
