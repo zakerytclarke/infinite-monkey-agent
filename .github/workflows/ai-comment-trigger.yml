@@ -7,11 +7,13 @@ on:
 jobs:
   run-agent:
     if: |
-      contains(github.event.comment.body, '/monkey') ||
-      contains(github.event.comment.body, '🐒') ||
-      contains(github.event.comment.body, '🙊') ||
-      contains(github.event.comment.body, '🙉') ||
-      contains(github.event.comment.body, '🙈')
+      contains(fromJSON('["COLLABORATOR", "MEMBER", "OWNER"]'), github.event.comment.author_association) && (
+        contains(github.event.comment.body, '/monkey') ||
+        contains(github.event.comment.body, '🐒') ||
+        contains(github.event.comment.body, '🙊') ||
+        contains(github.event.comment.body, '🙉') ||
+        contains(github.event.comment.body, '🙈')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
