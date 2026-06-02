@@ -5,15 +5,21 @@ import { logger } from "../logger.js";
 
 const router = Router();
 
+const getQueryValue = (value: unknown): string | undefined => {
+  return typeof value === "string" ? value : undefined;
+};
+
 router.get("/users/:id", async (req: Request, res: Response) => {
   // get user by id logic
 });
 
 router.get("/users/search", async (req: Request, res: Response) => {
-  const { name, email, role } = req.query;
+  const name = getQueryValue(req.query.name);
+  const email = getQueryValue(req.query.email);
+  const role = getQueryValue(req.query.role);
 
   let query = "SELECT id, name, email, role FROM users WHERE 1=1";
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (name) {
     params.push(`%${name}%`);
