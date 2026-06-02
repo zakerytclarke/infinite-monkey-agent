@@ -80,6 +80,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Install project dependencies first so the agent can run tests
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt || true
+          pip install pytest || true
+
       - name: Run AI Code Reviewer
         uses: zakerytclarke/infinite-monkey-agent@main
         with:
@@ -111,6 +117,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Install project dependencies first so the agent can run tests
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt || true
+          pip install pytest || true
 
       - name: Run AI Developer Agent
         uses: zakerytclarke/infinite-monkey-agent@main
