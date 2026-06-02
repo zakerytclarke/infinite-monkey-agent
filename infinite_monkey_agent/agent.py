@@ -3,7 +3,7 @@ import json
 import subprocess
 import requests
 from infinite_monkey_agent.config import Config
-from infinite_monkey_agent.git_utils import FileDiff
+from infinite_monkey_agent.git_utils import FileDiff, format_line_numbered_diff
 from infinite_monkey_agent.llm import generate_mock_review
 
 # Recursive list files helper
@@ -405,20 +405,27 @@ Your task is to review the git diff of a project, identify bugs, security vulner
 You can read files in the workspace using the provided tools to gain context.
 You MUST leave comments on specific modified lines that concern you using the `leaveComment` tool.
 
+Review Focus Categories:
+1. ALGORITHM EFFICIENCY & PERFORMANCE: You must be extremely critical of computational complexity. Identify inefficient implementations, such as recursive functions without memoization (like an inefficient factorial), nested loops (O(N^2) complexity), unnecessary database calls, memory leaks, or lack of caching.
+2. SECURITY VULNERABILITIES: Check for SQL injection, exposed secrets/keys, XSS, and command injection.
+3. LOGIC & CORRECTNESS: Ensure calculations are correct, off-by-one errors are avoided, and edge cases (e.g. empty lists, null values, negative inputs) are handled properly.
+4. CODE STYLE: Ensure type hints are used correctly, styling is consistent, and clean coding practices are followed.
+
 Guidelines:
-1. ONLY comment on line numbers that exist in the *new* version of the files and are actually modified or added in the diff. Check the diff lines starting with '+' and map them to their line numbers in the new file.
-2. DO NOT comment on unmodified lines.
-3. Be specific and constructive. Provide example code fixes where appropriate.
-4. When you are done reviewing and have left all comments, call the `finish` tool.
+1. The git diff in the prompt is formatted with the exact line numbers prepended to each line (e.g. "+ 12: code...").
+2. You MUST use these exact line numbers when calling the `leaveComment` tool. Only comment on line numbers that are actually modified or added (lines prefixed with "+").
+3. DO NOT comment on unmodified lines.
+4. Be specific, critical, and constructive. Provide example code fixes where appropriate.
+5. When you are done reviewing and have left all comments, call the `finish` tool.
 """
 
     system_prompt = default_prompt + additional_guidelines
     if config.custom_prompt:
         system_prompt += f"\n\nAdditional user guidelines/preferences:\n{config.custom_prompt}"
 
-    # Build initial user message with diff and test output
-    diff_text = "\n".join([fd.raw_content for fd in file_diffs])
-    user_message = f"Please review these changes.\n\nHere is the git diff:\n```diff\n{diff_text}\n```"
+    # Build initial user message with line-numbered diff and test output
+    diff_text = format_line_numbered_diff(file_diffs)
+    user_message = f"Please review these changes.\n\nHere is the git diff (annotated with exact line numbers):\n```diff\n{diff_text}\n```"
     if test_output:
         user_message += f"\n\nIMPORTANT: The project test suite failed during verification with the following logs:\n```\n{test_output}\n```"
 

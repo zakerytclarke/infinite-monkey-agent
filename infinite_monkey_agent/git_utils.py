@@ -173,3 +173,24 @@ def get_full_file_content(file_path: str) -> str:
         except Exception:
             return None
     return None
+
+def format_line_numbered_diff(file_diffs: list[FileDiff]) -> str:
+    output = []
+    for fd in file_diffs:
+        output.append(f"diff --git a/{fd.file} b/{fd.file}")
+        if fd.is_new:
+            output.append("new file mode")
+        elif fd.is_deleted:
+            output.append("deleted file")
+            
+        for hunk in fd.hunks:
+            output.append(hunk.header)
+            for line in hunk.lines:
+                if line.type == "added":
+                    prefix = f"+ {line.new_line_number:4d}: "
+                elif line.type == "deleted":
+                    prefix = f"- {line.old_line_number:4d}: "
+                else:
+                    prefix = f"  {line.new_line_number:4d}: "
+                output.append(prefix + line.content)
+    return "\n".join(output)

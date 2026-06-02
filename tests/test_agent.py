@@ -150,5 +150,20 @@ class TestAgentAndTools(unittest.TestCase):
         self.assertEqual(messages[3]["role"], "user")
         self.assertIn("Error: Your output was not valid JSON", messages[3]["content"])
 
+    def test_line_numbered_diff_format(self):
+        from infinite_monkey_agent.git_utils import DiffHunk, DiffLine, format_line_numbered_diff
+        fd = FileDiff("math_helper.py", is_new=True)
+        hunk = DiffHunk("@@ -0,0 +1,2 @@", 0, 0, 1, 2)
+        hunk.lines.append(DiffLine("added", "def add(a, b):", new_line_number=1))
+        hunk.lines.append(DiffLine("added", "    return a + b", new_line_number=2))
+        fd.hunks.append(hunk)
+        
+        formatted = format_line_numbered_diff([fd])
+        self.assertIn("diff --git a/math_helper.py b/math_helper.py", formatted)
+        self.assertIn("new file mode", formatted)
+        self.assertIn("@@ -0,0 +1,2 @@", formatted)
+        self.assertIn("+    1: def add(a, b):", formatted)
+        self.assertIn("+    2:     return a + b", formatted)
+
 if __name__ == "__main__":
     unittest.main()
