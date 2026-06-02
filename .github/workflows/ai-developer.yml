@@ -18,11 +18,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Runs the action locally from the root folder (uses the bundled dist/index.js in the repo)
+      # Runs the action locally from the root folder (installs the python module from source)
       - name: Run AI Developer Agent
         uses: ./
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           model: 'google/gemini-2.5-pro'
           run_tests: 'true'
           max_steps: '15'

@@ -1,5 +1,5 @@
-name: 'AI Code Reviewer'
-description: 'Reviews code diffs using Gemini or other models and optionally runs tests to locate failures'
+name: 'AI Code Reviewer & Developer Agent'
+description: 'AI-powered code reviewer and autonomous developer agent written in Python'
 author: 'zakerytclarke'
 branding:
   icon: 'code'
@@ -15,27 +15,54 @@ inputs:
     description: 'Gemini API Key'
     required: false
   model:
-    description: 'Model to use'
+    description: 'Model to use (default: google/gemini-2.5-pro)'
     required: false
     default: 'google/gemini-2.5-pro'
   custom_prompt:
-    description: 'Custom instructions, code guidelines, or style preferences for the review'
+    description: 'Custom instructions, code guidelines, or style preferences'
     required: false
   github_token:
-    description: 'GitHub token for posting comments'
+    description: 'GitHub token for posting reviews'
     required: false
     default: ${{ github.token }}
   run_tests:
-    description: 'Auto-detect and run tests, feeding failures to LLM (true/false)'
+    description: 'Run project tests and send failures to LLM (true/false)'
     required: false
     default: 'true'
   test_command:
-    description: 'Custom command to execute tests'
+    description: 'Custom command to run tests'
     required: false
   max_steps:
-    description: 'Maximum step limit for the autonomous developer agent loop'
+    description: 'Maximum step limit for the developer agent loop'
     required: false
     default: '15'
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f "$GITHUB_ACTION_PATH/pyproject.toml" ]; then
+          pip install "$GITHUB_ACTION_PATH"
+        else
+          pip install ai-reviewer
+        fi
+    - name: Run AI Reviewer CLI
+      shell: bash
+      run: |
+        ai-reviewer
+      env:
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        AI_REVIEWER_MODEL: ${{ inputs.model }}
+        AI_REVIEWER_PROMPT: ${{ inputs.custom_prompt }}
+        AI_REVIEWER_RUN_TESTS: ${{ inputs.run_tests }}
+        AI_REVIEWER_TEST_COMMAND: ${{ inputs.test_command }}
+        AI_REVIEWER_MAX_STEPS: ${{ inputs.max_steps }}
