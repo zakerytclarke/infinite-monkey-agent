@@ -1,0 +1,2 @@
+[console_scripts]
+infinite-monkey-agent = infinite_monkey_agent.cli:main
