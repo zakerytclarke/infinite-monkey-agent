@@ -28,6 +28,99 @@ pip install .
 
 ---
 
+## 🤖 Agent Roles & Workflows
+
+Infinite Monkey Agent operates in two main modes: a code review judge and an autonomous software developer.
+
+### 🔍 1. AI Code Review Judge (`review` mode)
+
+In `review` mode, the agent acts as an automated reviewer on pull requests. Its workflow proceeds as follows:
+
+1. **Retrieves Git Diff**: The agent retrieves modifications either from a local git diff relative to the target branch (default: `main`) or fetches the diff directly from the GitHub API using a pull request number (`--pr-number`).
+2. **Runs Project Tests**: If enabled (via configuration or `--run-tests`), the agent automatically detects the project type and runs the verification test suite prior to the LLM call. If the tests fail, the output logs are gathered to help the AI model understand the context of the breakage.
+3. **Injects Custom Guidelines**: In addition to standard security, logic, and style guidelines, the agent reads and appends guidelines from `infinitemonkey.md` and `claude.md` if they exist in the root of the repository, enabling project-specific standards.
+4. **Agent Tool Loop**: The model is prompted with the code review guidelines, the diff (with exact line numbers), and test outputs. It enters a tool-calling loop where it can query files in the workspace.
+5. **Applies Annotations**: The agent leaves inline comments on modified lines of the PR via the `leaveComment` tool.
+6. **Publishes Results**:
+   - **Locally**: Prints colorized logs of errors, warnings, and suggestions to the console.
+   - **GitHub Actions**: Publishes GitHub Actions workflow annotations and posts a full PR Review containing the inline comments along with the agent's chain-of-thought summary.
+
+### 💻 2. Autonomous Developer Agent (`develop` mode)
+
+In `develop` mode, the agent acts as an autonomous engineer tasked with resolving a bug or implementing a feature. Its workflow proceeds as follows:
+
+1. **Loads Issue Details**: The agent loads a GitHub Issue title and body from the event payload or a local file (`--issue-file`).
+2. **Conversation Context**: If authenticated via GitHub, the agent fetches comments on the issue to gain additional conversational context.
+3. **Execution Loop**: The agent starts a multi-step tool-calling cycle (up to `max_steps`, default `30`). In each step, the model reasons and executes tools (reading/writing files, deleting files, running terminal commands) locally to resolve the issue.
+4. **Installs Dependencies & Runs Tests**: The agent is responsible for identifying build systems and package managers. If a command fails due to missing dependencies, it runs setup/installation commands (`npm install`, `pip install`, etc.) and runs the test suite iteratively until the codebase compiles and all tests pass.
+5. **Calls Finish**: Once verified, the agent concludes by calling the `finish` tool.
+6. **Pushes Branch & PR**:
+   - Creates a patch branch: `ai-patch/issue-{issue_number}`.
+   - Commits changes using a standardized commit message: `AI: resolve issue #{issue_number} - {issue_title}`.
+   - Force-pushes the branch to the origin repository.
+   - Creates a Pull Request on GitHub targeting the default repository branch, displaying the changes and the verbatim chain-of-thought log.
+   - Leaves a comment on the original issue linking to the newly opened PR.
+
+---
+
+## 🛠️ Tool Calling Capabilities
+
+The agent operates in a closed execution loop using structured JSON outputs. During execution, it has access to the following tools:
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `listFiles` | `{}` | Recursively lists all files in the repository. Ignores common build/dependency folders (e.g. `node_modules`, `.git`, `dist`, `__pycache__`). |
+| `readFile` | `{"path": "string"}` | Reads the text content of a file in the workspace. |
+| `writeFile` | `{"path": "string", "content": "string"}` | Creates or overwrites a file in the workspace with the specified content. |
+| `deleteFile` | `{"path": "string"}` | Deletes a file or recursively deletes a directory. |
+| `runCommand` | `{"command": "string"}` | Runs a command in the local workspace shell and returns the output (stdout + stderr). Useful for running tests, compilers, or installing dependencies. |
+| `leaveComment` | `{"path": "string", "line": int, "level": "notice"\|"warning"\|"error", "message": "string"}` | *(Reviewer only)* Leaves a code review comment on a specific line of a file. |
+| `finish` | `{"summary": "string"}` | Ends the agent execution loop and provides a summary of the accomplishments. |
+
+---
+
+## ⚙️ Configuration & Environment Settings
+
+The tool can be customized through environment variables, GitHub Actions inputs, CLI options, or a project configuration file.
+
+### 1. Configuration File
+You can create an `ai-reviewer.json` or `.ai-reviewer.json` file in the root of your project. Keys can be defined in camelCase (e.g., `maxSteps`), which automatically map to snake_case properties inside the agent.
+
+Example `ai-reviewer.json`:
+```json
+{
+  "model": "google/gemini-2.5-pro",
+  "maxSteps": 20,
+  "runTests": true,
+  "testCommand": "pytest tests/"
+}
+```
+
+### 2. Available Options & Parameters
+
+| Config Parameter | CLI Flag | Environment Variable | GitHub Action Input | Default Value | Description |
+|---|---|---|---|---|---|
+| **Subcommand** | `review` / `develop` | `AI_REVIEWER_SUBCOMMAND` | `subcommand` | `review` | The mode to run (`review` or `develop`). |
+| **OpenRouter Key** | - | `OPENROUTER_API_KEY` | `openrouter_api_key` | `None` | API key to use OpenRouter. |
+| **OpenAI Key** | - | `OPENAI_API_KEY` | `openai_api_key` | `None` | API key to use OpenAI. |
+| **Gemini Key** | - | `GEMINI_API_KEY` | `gemini_api_key` | `None` | API key to use Google Gemini. |
+| **GitHub Token** | - | `GITHUB_TOKEN`, `GH_TOKEN` | `github_token` | `None` | Token to authenticate Git pushes and PR reviews. |
+| **Model** | `--model`, `-m` | `AI_REVIEWER_MODEL` | `model` | `gpt-5.4` | LLM model identifier. (Falls back to `gemini-2.5-pro` if only Gemini key is present). |
+| **Custom Prompt** | `--prompt`, `-p` | `AI_REVIEWER_PROMPT` | `custom_prompt` | `None` | Custom system instructions or path to instructions file. |
+| **Run Tests** | `--run-tests` / `--no-tests` | `AI_REVIEWER_RUN_TESTS` | `run_tests` | `true` | Toggle test execution prior to or during execution. |
+| **Test Command** | `--test-command` | `AI_REVIEWER_TEST_COMMAND` | `test_command` | Auto-detected | Specific command used to run tests. |
+| **Max Steps** | `--max-steps` | `AI_REVIEWER_MAX_STEPS` | `max_steps` | `30` | Step limit for the developer agent loop. |
+| **Base Branch** | `--branch`, `-b` | `GITHUB_BASE_REF` | - | `main` | Target branch to diff/merge against. |
+| **Mock Mode** | `--mock` | `AI_REVIEWER_MOCK` | `mock` | `false` | Run with static simulated responses for offline testing. |
+| **Diff File** | `--diff-file`, `-d` | - | - | - | Path to a pre-saved `.diff` file for offline reviewing. |
+| **Issue File** | `--issue-file` | - | - | - | Path to a GitHub Issue event payload JSON for local development. |
+| **PR Number** | `--pr-number` | `PR_NUMBER` | `pr_number` | `None` | Specific pull request number to fetch. |
+
+### 3. Custom Coding Guidelines
+If `infinitemonkey.md` or `claude.md` exist in the root of the workspace, their contents are automatically appended to the reviewer agent's system prompt as custom guidelines. This allows repositories to easily enforce coding standards without modifying command-line options.
+
+---
+
 ## 🛠️ CLI Subcommands & Local Usage
 
 Once installed, the CLI tool can be executed using the `infinite-monkey-agent` command:
@@ -128,16 +221,6 @@ jobs:
 Whenever a commit is merged or pushed directly to the `main` branch, a GitHub Action automatically builds the python source package and wheel, then deploys them to PyPI using Trusted Publishers.
 
 See the release workflow config in [.github/workflows/release.yml](.github/workflows/release.yml).
-
----
-
-## 🔑 Authentication Settings
-
-Configure any of the following environment keys or inputs to authenticate:
-
-- **OpenRouter**: Set `openrouter_api_key` input or `OPENROUTER_API_KEY` env.
-- **OpenAI**: Set `openai_api_key` input or `OPENAI_API_KEY` env.
-- **Gemini**: Set `gemini_api_key` input or `GEMINI_API_KEY` env.
 
 ---
 
