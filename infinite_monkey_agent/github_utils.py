@@ -53,7 +53,7 @@ def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: 
         return
 
     pr_number: Union[str, int, None] = config.pr_number
-    commit_id: Optional[str] = config.github_sha
+    commit_id: Optional[str] = None
 
     if event_path and os.path.exists(event_path):
         try:
@@ -63,12 +63,37 @@ def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: 
                 if pr_info:
                     if not pr_number:
                         pr_number = pr_info.get("number")
-                    if not commit_id:
-                        commit_id = pr_info.get("head", {}).get("sha")
+                    commit_id = pr_info.get("head", {}).get("sha")
         except Exception as e:
             print(f"Failed to parse GitHub event JSON: {e}")
 
-    # Fallback to get the HEAD commit if not resolved
+    # Fetch PR details from GitHub API to resolve correct HEAD commit SHA if pr_number is known
+    if pr_number:
+        print(f"Fetching PR #{pr_number} details from GitHub API to resolve HEAD commit SHA...")
+        pr_url = f"https://api.github.com/repos/{gh_repo}/pulls/{pr_number}"
+        headers = {
+            "Authorization": f"token {gh_token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ai-reviewer-action"
+        }
+        try:
+            res = requests.get(pr_url, headers=headers, timeout=20)
+            if res.status_code == 200:
+                pr_data = res.json()
+                head_sha = pr_data.get("head", {}).get("sha")
+                if head_sha:
+                    commit_id = head_sha
+                    print(f"Resolved HEAD commit SHA from GitHub PR #{pr_number}: {commit_id}")
+            else:
+                print(f"Warning: Failed to fetch PR details from GitHub API (status: {res.status_code}).")
+        except Exception as e:
+            print(f"Warning: Error fetching PR details: {e}")
+
+    # Fallbacks if commit_id still not resolved
+    if not commit_id:
+        commit_id = config.github_sha
+
     if not commit_id or commit_id in ("master", "main", ""):
         try:
             import subprocess

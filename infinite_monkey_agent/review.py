@@ -1,5 +1,6 @@
 import os
 import sys
+import requests
 from typing import Optional
 from infinite_monkey_agent.config import Config
 from infinite_monkey_agent.git_utils import get_diff, parse_diff
@@ -85,8 +86,30 @@ async def review_pr(config: Config) -> None:
             print("No tests detected or run.")
 
     # 2. Fetch and parse diff
-    print("Fetching git diff...")
-    diff_text: str = get_diff(config.diff_file, config.branch)
+    diff_text: str = ""
+    # Try fetching diff from GitHub PR if available
+    if config.pr_number and config.github_token and config.github_repository:
+        print(f"Fetching diff from GitHub PR #{config.pr_number}...")
+        pr_url = f"https://api.github.com/repos/{config.github_repository}/pulls/{config.pr_number}"
+        headers = {
+            "Authorization": f"token {config.github_token}",
+            "Accept": "application/vnd.github.diff",
+            "User-Agent": "ai-reviewer-action"
+        }
+        try:
+            res = requests.get(pr_url, headers=headers, timeout=30)
+            if res.status_code == 200:
+                diff_text = res.text
+                print(f"Successfully retrieved diff for PR #{config.pr_number} from GitHub API ({len(diff_text)} chars).")
+            else:
+                print(f"Warning: Failed to fetch diff from GitHub API (status: {res.status_code}). Falling back to local git diff.")
+        except Exception as e:
+            print(f"Warning: Error fetching diff from GitHub API: {e}. Falling back to local git diff.")
+
+    if not diff_text:
+        print("Fetching git diff locally...")
+        diff_text = get_diff(config.diff_file, config.branch)
+
     if not diff_text.strip():
         print("No code changes found to review.")
         return
