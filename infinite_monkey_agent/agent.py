@@ -226,8 +226,9 @@ Guidelines:
 1. Start by listing files to orient yourself in the codebase.
 2. Read files before editing them.
 3. Keep changes minimal and focused.
-4. Always run compilation or tests (e.g. `npm test` or `cargo test`) after making edits to ensure they didn't break the build or tests.
-5. Do not stop until all tests pass. Call 'finish' only when you have verified that the implementation is complete.
+4. You are fully responsible for running the test suite. Identify/infer what build/test tools and package managers the repository uses (e.g., Python/pytest, Node/Jest, Rust/Cargo, etc.) by inspecting workspace files (like pyproject.toml, requirements.txt, package.json).
+5. If the environment is missing dependencies or test frameworks (e.g., if pytest or npm packages are not installed and runCommand fails), you MUST run the appropriate installation commands (such as `pip install pytest`, `npm install`, or other compilation commands) via the `runCommand` tool to set them up.
+6. Ensure that the codebase compiles and all tests run and pass successfully. Do not stop until all tests pass. Call 'finish' only when you have verified that the implementation is complete.
 """
 
     initial_user_message = f"Please resolve this GitHub issue.\nIssue Title: {issue_title}\nIssue Description:\n{issue_body}"

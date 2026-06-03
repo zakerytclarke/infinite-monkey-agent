@@ -35,7 +35,7 @@ inputs:
   max_steps:
     description: 'Maximum step limit for the developer agent loop'
     required: false
-    default: '15'
+    default: '30'
 runs:
   using: 'composite'
   steps:

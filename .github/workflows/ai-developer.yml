@@ -19,11 +19,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Test Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest
-
       # Runs the action locally from the root folder (installs the python module from source)
       - name: Run AI Developer Agent
         uses: ./
@@ -33,4 +28,4 @@ jobs:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           model: 'gpt-5.4'
           run_tests: 'true'
-          max_steps: '15'
+          max_steps: '30'

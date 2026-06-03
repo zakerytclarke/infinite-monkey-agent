@@ -80,12 +80,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Install project dependencies first so the agent can run tests
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt || true
-          pip install pytest || true
-
       - name: Run AI Code Reviewer
         uses: zakerytclarke/infinite-monkey-agent@main
         with:
@@ -118,19 +112,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Install project dependencies first so the agent can run tests
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt || true
-          pip install pytest || true
-
       - name: Run AI Developer Agent
         uses: zakerytclarke/infinite-monkey-agent@main
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           model: 'gpt-5.4'
           run_tests: 'true'
-          max_steps: '15' # Limit development loops to control execution time
+          max_steps: '30' # Limit development loops to control execution time
 ```
 
 ---

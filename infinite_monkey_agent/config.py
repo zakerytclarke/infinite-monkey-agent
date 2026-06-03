@@ -17,7 +17,7 @@ class Config:
         self.mock = False
         self.subcommand = None
         self.issue_file = None
-        self.max_steps = 15
+        self.max_steps = 30
         
         # GitHub action standard environment variables
         self.github_event_path = os.environ.get("GITHUB_EVENT_PATH")
