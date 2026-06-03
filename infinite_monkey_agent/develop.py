@@ -74,10 +74,9 @@ async def develop_issue(config: Config):
     # Format thoughts as collapsible markdown
     thoughts_md = ""
     if developer_thoughts:
-        thoughts_md += "\n\n<details>\n<summary>🧠 Developer Agent Thought Process</summary>\n\n"
-        for idx, t in enumerate(developer_thoughts, 1):
-            thoughts_md += f"**Step {idx}:** {t}\n\n"
-        thoughts_md += "</details>"
+        thoughts_md += "\n\n<details>\n<summary>🤖 Verbatim Developer Chain of Thought</summary>\n\n"
+        thoughts_md += "\n\n".join(developer_thoughts)
+        thoughts_md += "\n</details>"
 
     # Simulation in mock mode
     if config.mock:

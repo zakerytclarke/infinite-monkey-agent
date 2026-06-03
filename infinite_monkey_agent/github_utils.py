@@ -111,10 +111,10 @@ def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: 
         summary_body += f"I have left {len(valid_annotations)} inline suggestion(s)/comment(s) on the changes."
 
     if reviewer_thoughts:
-        summary_body += "\n\n<details>\n<summary>🧠 Reviewer Thought Process</summary>\n\n"
-        for idx, t in enumerate(reviewer_thoughts, 1):
-            summary_body += f"**Step {idx}:** {t}\n\n"
-        summary_body += "</details>"
+        summary_body += "\n\n<details>\n<summary>🤖 Verbatim Reviewer Chain of Thought</summary>\n\n"
+        summary_body += "\n\n".join(reviewer_thoughts)
+        summary_body += "\n</details>"
+
 
     body = {
         "commit_id": commit_id,

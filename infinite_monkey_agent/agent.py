@@ -257,23 +257,35 @@ router.get("/users/search", async (req: Request, res: Response) => {
         }
     ]
 
-    for step, action in enumerate(mock_actions):
-        print(f"\n--- Step {step + 1} / {len(mock_actions)} ---")
-        print(f"🤖 Thought: {action['thought']}")
+    step_logs: list[str] = []
+    for step, action in enumerate(mock_actions, 1):
+        thought = action["thought"]
+        tool = action["tool"]
+        args = action["arguments"]
+        print(f"\n--- Step {step} / {len(mock_actions)} ---")
+        print(f"🤖 Thought: {thought}")
         
-        if action["tool"] == "listFiles":
+        log_entry = f"### Step {step}\n\n**Thought:** {thought}\n\n**Tool:** `{tool}`\n**Arguments:**\n```json\n{json.dumps(args, indent=2)}\n```\n\n"
+        
+        if tool == "listFiles":
             out = execute_tool("listFiles", {})
             print(f"Tool Output (truncated):\n" + "\n".join(out.splitlines()[:5]) + "...")
-        elif action["tool"] == "runCommand":
-            print(f"🔨 Executing tool [runCommand] with arguments: {json.dumps(action['arguments'])}")
+            log_entry += f"**Output:**\n```\n{out[:500]}...\n```"
+        elif tool == "runCommand":
+            print(f"🔨 Executing tool [runCommand] with arguments: {json.dumps(args)}")
             print("Mock tests execution passed successfully!")
+            log_entry += f"**Output:**\n```\nCommand finished with return code 0. Output:\nMock tests execution passed successfully!\n```"
+        elif tool == "finish":
+            log_entry += f"**Output:**\n```\nTask completed: {args.get('summary', '')}\n```"
         else:
-            out = execute_tool(action["tool"], action["arguments"])
+            out = execute_tool(tool, args)
             print(f"Tool Output:\n{out}")
+            log_entry += f"**Output:**\n```\n{out}\n```"
+            
+        step_logs.append(log_entry)
 
     summary = "Fixed the SQL Injection vulnerability in `src/routes/users.ts` by introducing parameterized query parameters instead of interpolating query strings directly."
-    thoughts = [action["thought"] for action in mock_actions]
-    return summary, thoughts
+    return summary, step_logs
 
 def extract_json_objects(text: str) -> list[dict]:
     """Extracts all valid JSON objects from a text block, handling multiple JSON lines or objects."""
@@ -309,6 +321,7 @@ async def run_developer_agent(config: Config, issue_title: str, issue_body: str)
 
     conversation_history = []
     developer_thoughts: list[str] = []
+    step_counter = 0
 
     system_prompt = """You are an expert AI software developer running in a local workspace repository.
 Your task is to fix a bug or implement a feature described in a GitHub issue.
@@ -444,25 +457,40 @@ Guidelines:
         finished = False
         finish_summary = ""
 
-        for action in actions:
+        step_counter += 1
+        step_log = f"### Step {step_counter}\n\n"
+
+        for idx, action in enumerate(actions, 1):
             thought = action.get("thought", "")
-            if thought:
-                developer_thoughts.append(thought)
             tool = action.get("tool", "")
             args = action.get("arguments", {})
             print(f"🤖 Thought: {thought}")
             print(f"Tool call: {tool}")
 
+            action_desc = f"**Action {idx}:** `{tool}`\n"
+            if thought:
+                action_desc = f"**Thought:** {thought}\n\n" + action_desc
+            if args:
+                action_desc += f"**Arguments:**\n```json\n{json.dumps(args, indent=2)}\n```\n\n"
+
             if tool == "finish":
                 finished = True
                 finish_summary = args.get("summary", "No summary provided.")
-                step_outputs.append(f"Tool [finish] called. Summary: {finish_summary}")
+                tool_output = f"Tool [finish] called. Summary: {finish_summary}"
+                step_outputs.append(tool_output)
+                step_log += action_desc + f"**Output:**\n```\n{tool_output}\n```\n\n"
                 break
 
             # Execute tool
             tool_output = execute_tool(tool, args)
             print(f"Tool Output length: {len(tool_output)}")
             step_outputs.append(f"Tool [{tool}] output:\n{tool_output}")
+            
+            # Format and truncate output for PR descriptions if excessively long
+            formatted_output = tool_output if len(tool_output) <= 3000 else tool_output[:3000] + "\n...[TRUNCATED]..."
+            step_log += action_desc + f"**Output:**\n```\n{formatted_output}\n```\n\n"
+
+        developer_thoughts.append(step_log)
 
         conversation_history.append({
             "role": "assistant",
@@ -487,7 +515,7 @@ async def run_reviewer_agent(config: Config, file_diffs: list[FileDiff], test_ou
         print("Using mock code reviewer reviews...")
         mock_res = generate_mock_review(file_diffs, test_output)
         mock_reviews = mock_res.get("reviews", [])
-        mock_thoughts = ["Mock review thought: Analyzing git diff for potential vulnerabilities and style issues."]
+        mock_thoughts = ["### Step 1\n\n**Thought:** Mock review thought: Analyzing git diff for potential vulnerabilities and style issues.\n\n**Tool:** `finish`\n**Arguments:**\n```json\n{}\n```\n\n**Output:**\n```\nReview completed.\n```"]
         return mock_reviews, mock_thoughts
 
     api_key = config.openrouter_api_key or config.openai_api_key or config.gemini_api_key
@@ -496,6 +524,7 @@ async def run_reviewer_agent(config: Config, file_diffs: list[FileDiff], test_ou
 
     collected_comments: list[dict] = []
     reviewer_thoughts: list[str] = []
+    step_counter = 0
 
     # Safe tool execution inside reviewer
     def execute_reviewer_tool(tool: str, args: dict) -> str:
@@ -679,25 +708,39 @@ Your output must be a single, raw JSON object matching this schema (with no encl
         finished = False
         finish_summary = ""
 
-        for action in actions:
+        step_counter += 1
+        step_log = f"### Step {step_counter}\n\n"
+
+        for idx, action in enumerate(actions, 1):
             thought = action.get("thought", "")
-            if thought:
-                reviewer_thoughts.append(thought)
             tool = action.get("tool", "")
             args = action.get("arguments", {})
             print(f"🤖 Thought: {thought}")
             print(f"Tool call: {tool}")
 
+            action_desc = f"**Action {idx}:** `{tool}`\n"
+            if thought:
+                action_desc = f"**Thought:** {thought}\n\n" + action_desc
+            if args:
+                action_desc += f"**Arguments:**\n```json\n{json.dumps(args, indent=2)}\n```\n\n"
+
             if tool == "finish":
                 finished = True
                 finish_summary = args.get("summary", "")
-                step_outputs.append(f"Tool [finish] called. Summary: {finish_summary}")
+                tool_output = f"Tool [finish] called. Summary: {finish_summary}"
+                step_outputs.append(tool_output)
+                step_log += action_desc + f"**Output:**\n```\n{tool_output}\n```\n\n"
                 break
 
             # Execute tool
             tool_output = execute_reviewer_tool(tool, args)
             print(f"Tool Output length: {len(tool_output)}")
             step_outputs.append(f"Tool [{tool}] output:\n{tool_output}")
+
+            formatted_output = tool_output if len(tool_output) <= 3000 else tool_output[:3000] + "\n...[TRUNCATED]..."
+            step_log += action_desc + f"**Output:**\n```\n{formatted_output}\n```\n\n"
+
+        reviewer_thoughts.append(step_log)
 
         conversation_history.append({
             "role": "assistant",
