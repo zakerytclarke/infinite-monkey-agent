@@ -67,28 +67,39 @@ def get_diff(diff_file: str = None, branch: str = "master") -> str:
     except subprocess.CalledProcessError:
         raise RuntimeError("Not a git repository and no --diff-file was provided.")
 
-    try:
-        # Try fetching origin/branch
-        try:
-            subprocess.run(["git", "fetch", "origin", branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-        except Exception:
-            pass
+    # Build fallbacks if main or master is targeted
+    fallback_branches: list[str] = []
+    if branch == "master":
+        fallback_branches = ["main"]
+    elif branch == "main":
+        fallback_branches = ["master"]
 
-        target = branch
+    errors: list[str] = []
+    for b in [branch] + fallback_branches:
         try:
-            subprocess.run(["git", "rev-parse", "--verify", f"origin/{branch}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            target = f"origin/{branch}"
-        except subprocess.CalledProcessError:
-            pass
+            # Try fetching origin/b
+            try:
+                subprocess.run(["git", "fetch", "origin", b], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            except Exception:
+                pass
 
-        output = subprocess.check_output(["git", "diff", f"{target}...HEAD"], encoding="utf-8")
-        return output
-    except Exception as e:
-        try:
-            output = subprocess.check_output(["git", "diff", branch], encoding="utf-8")
+            target = b
+            try:
+                subprocess.run(["git", "rev-parse", "--verify", f"origin/{b}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                target = f"origin/{b}"
+            except subprocess.CalledProcessError:
+                pass
+
+            output = subprocess.check_output(["git", "diff", f"{target}...HEAD"], encoding="utf-8")
             return output
-        except Exception as e2:
-            raise RuntimeError(f"Failed to get git diff against {branch}: {e2}")
+        except Exception as e:
+            try:
+                output = subprocess.check_output(["git", "diff", b], encoding="utf-8")
+                return output
+            except Exception as e2:
+                errors.append(f"Diff against '{b}' failed: {e2}")
+
+    raise RuntimeError(f"Failed to get git diff against {branch} and tried fallbacks. Errors: {'; '.join(errors)}")
 
 def parse_diff(diff_text: str) -> list[FileDiff]:
     file_diffs = []

@@ -13,7 +13,7 @@ class Config:
         self.run_tests = True
         self.test_command = None
         self.diff_file = None
-        self.branch = "master"
+        self.branch = "main"
         self.mock = False
         self.subcommand = None
         self.issue_file = None
@@ -104,6 +104,26 @@ def load_config(args=None) -> Config:
     input_pr_number = env.get("INPUT_PR_NUMBER") or env.get("PR_NUMBER")
     if input_pr_number:
         config.pr_number = input_pr_number
+
+    # Auto-detect target base branch from GitHub Actions environment
+    gh_base_ref = env.get("GITHUB_BASE_REF")
+    if gh_base_ref:
+        config.branch = gh_base_ref
+
+    event_path = config.github_event_path
+    if event_path and os.path.exists(event_path):
+        try:
+            with open(event_path, "r", encoding="utf-8") as f:
+                event_data = json.load(f)
+                pr_base = event_data.get("pull_request", {}).get("base", {}).get("ref")
+                if pr_base:
+                    config.branch = pr_base
+                else:
+                    default_branch = event_data.get("repository", {}).get("default_branch")
+                    if default_branch:
+                        config.branch = default_branch
+        except Exception:
+            pass
 
     # 4. Load from CLI Arguments
     i = 0
