@@ -28,9 +28,13 @@ jobs:
           ref: ${{ github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
           fetch-depth: 0
 
-      - name: Run Infinite Monkey Agent
+      # Step 1: Run AI Developer Agent (only for Issue comments)
+      - name: Run AI Developer Agent
+        id: developer
+        if: ${{ !github.event.issue.pull_request }}
         uses: ./
         with:
+          subcommand: 'develop'
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
@@ -38,3 +42,17 @@ jobs:
           model: 'gpt-5.4'
           run_tests: 'true'
           max_steps: '30'
+
+      # Step 2: Run AI Code Reviewer (for PR comments, or newly created PRs)
+      - name: Run AI Code Reviewer
+        if: ${{ github.event.issue.pull_request || steps.developer.outputs.pr_number != '' }}
+        uses: ./
+        with:
+          subcommand: 'review'
+          pr_number: ${{ github.event.issue.pull_request && github.event.issue.number || steps.developer.outputs.pr_number }}
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          github_token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          model: 'gpt-5.4'
+          run_tests: 'true'

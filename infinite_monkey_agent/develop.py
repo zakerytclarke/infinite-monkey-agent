@@ -69,7 +69,15 @@ async def develop_issue(config: Config):
         full_issue_body += comments_context
 
     # 2. Execute developer agent
-    summary_of_changes = await run_developer_agent(config, issue_title, full_issue_body)
+    summary_of_changes, developer_thoughts = await run_developer_agent(config, issue_title, full_issue_body)
+
+    # Format thoughts as collapsible markdown
+    thoughts_md = ""
+    if developer_thoughts:
+        thoughts_md += "\n\n<details>\n<summary>🧠 Developer Agent Thought Process</summary>\n\n"
+        for idx, t in enumerate(developer_thoughts, 1):
+            thoughts_md += f"**Step {idx}:** {t}\n\n"
+        thoughts_md += "</details>"
 
     # Simulation in mock mode
     if config.mock:
@@ -80,6 +88,16 @@ async def develop_issue(config: Config):
         print(f"[MOCK] GitHub PR Opened: Created PR from \"ai-patch/issue-{issue_number}\" into \"{default_branch}\"")
         print(f"[MOCK] GitHub PR Url: https://github.com/{gh_repo or 'owner/repo'}/pull/123")
         print(f"[MOCK] GitHub Comment Posted: Link left on Issue #{issue_number}")
+        
+        # Write mock PR number output
+        github_output_path = os.environ.get("GITHUB_OUTPUT")
+        if github_output_path:
+            try:
+                with open(github_output_path, "a", encoding="utf-8") as f:
+                    f.write("pr_number=123\n")
+                print("Wrote mock pr_number=123 to GITHUB_OUTPUT.")
+            except Exception as e:
+                print(f"Warning: Failed to write GITHUB_OUTPUT: {e}")
         return
 
     # 3. Check for workspace modifications
@@ -127,7 +145,7 @@ async def develop_issue(config: Config):
         "title": f"AI: Resolve Issue #{issue_number} - {issue_title}",
         "head": patch_branch,
         "base": default_branch,
-        "body": f"Closes #{issue_number}\n\n### 🤖 Autonomous Developer Changes Summary\n\n{summary_of_changes}"
+        "body": f"Closes #{issue_number}\n\n### 🤖 Autonomous Developer Changes Summary\n\n{summary_of_changes}{thoughts_md}"
     }
 
     print("Opening GitHub Pull Request...")
@@ -149,10 +167,20 @@ async def develop_issue(config: Config):
     pr_number = pr_data.get("number")
     print(f"Successfully created Pull Request #{pr_number}: {pr_html_url}")
 
+    # Write PR number output
+    github_output_path = os.environ.get("GITHUB_OUTPUT")
+    if github_output_path:
+        try:
+            with open(github_output_path, "a", encoding="utf-8") as f:
+                f.write(f"pr_number={pr_number}\n")
+            print(f"Wrote pr_number={pr_number} to GITHUB_OUTPUT.")
+        except Exception as e:
+            print(f"Warning: Failed to write to GITHUB_OUTPUT: {e}")
+
     # 6. Comment on Issue linking to PR
     comment_url = f"https://api.github.com/repos/{gh_repo}/issues/{issue_number}/comments"
     comment_body = {
-        "body": f"🤖 Beep boop! I have attempted to resolve this issue in Pull Request #{pr_number} ({pr_html_url})."
+        "body": f"🤖 Beep boop! I have attempted to resolve this issue in Pull Request #{pr_number} ({pr_html_url})." + thoughts_md
     }
 
     print(f"Adding link comment to Issue #{issue_number}...")
@@ -161,60 +189,3 @@ async def develop_issue(config: Config):
         print(f"Failed to post issue comment: {res.status_code} {res.reason}\n{res.text}")
     else:
         print("Successfully posted issue comment.")
-
-    # 7. Run direct PR review immediately to bypass GITHUB_TOKEN triggers block
-    print("\n🔍 Running direct AI PR review on the created Pull Request...")
-    try:
-        from infinite_monkey_agent.git_utils import get_diff, parse_diff
-        from infinite_monkey_agent.agent import run_reviewer_agent
-        from infinite_monkey_agent.tester import run_tests
-        from infinite_monkey_agent.github_utils import post_github_review
-
-        # Run verification tests
-        test_passed = True
-        test_output = None
-        if config.run_tests:
-            test_result = run_tests(config.test_command)
-            if test_result.run:
-                test_passed = test_result.passed
-                if not test_passed:
-                    test_output = test_result.output
-
-        # Get the diff between base branch and HEAD
-        diff_text = get_diff(None, default_branch)
-        file_diffs = parse_diff(diff_text)
-        if file_diffs:
-            # Create a temporary mock GITHUB_EVENT_PATH payload
-            import tempfile
-            mock_event = {
-                "pull_request": {
-                    "number": pr_number,
-                    "head": {
-                        "sha": subprocess.check_output(["git", "rev-parse", "HEAD"], encoding="utf-8").strip()
-                    }
-                }
-            }
-            with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as f:
-                json.dump(mock_event, f)
-                temp_event_path = f.name
-
-            # Create a review config that points to the new event file
-            review_config = Config()
-            for attr in dir(config):
-                if not attr.startswith("__") and not callable(getattr(config, attr)):
-                    setattr(review_config, attr, getattr(config, attr))
-            review_config.github_event_path = temp_event_path
-
-            # Run reviewer agent and post comments
-            annotations = await run_reviewer_agent(review_config, file_diffs, test_output)
-            post_github_review(review_config, file_diffs, annotations, test_passed)
-
-            # Cleanup
-            try:
-                os.remove(temp_event_path)
-            except Exception:
-                pass
-        else:
-            print("No file diff found compared to the base branch. Skipping review.")
-    except Exception as e:
-        print(f"Warning: Failed to run direct PR review: {e}")

@@ -4,7 +4,93 @@ import subprocess
 import requests
 from infinite_monkey_agent.config import Config
 from infinite_monkey_agent.git_utils import FileDiff, format_line_numbered_diff
-from infinite_monkey_agent.llm import generate_mock_review
+from typing import Optional
+def generate_mock_review(file_diffs: list[FileDiff], test_output: Optional[str] = None) -> dict[str, list[dict]]:
+    reviews: list[dict] = []
+    
+    for fd in file_diffs:
+        for hunk in fd.hunks:
+            for line in hunk.lines:
+                if line.type != "added" or not line.new_line_number:
+                    continue
+                
+                content: str = line.content
+
+                # 1. SQL Injection vulnerability in users.ts
+                if "users.ts" in fd.file and "LIKE '%${name}%'" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "error",
+                        "message": "Critical SQL Injection vulnerability. User input `name` is directly interpolated into the query string. Use parameterized queries instead (e.g. `db.query('... WHERE name LIKE $1', ['%' + name + '%'])`)."
+                    })
+                elif "users.ts" in fd.file and "email = '${email}'" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "error",
+                        "message": "Critical SQL Injection vulnerability. User input `email` is directly interpolated into the query string. Use parameterized queries instead."
+                    })
+                elif "users.ts" in fd.file and "role = '${role}'" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "error",
+                        "message": "Critical SQL Injection vulnerability. User input `role` is directly interpolated into the query string. Use parameterized queries instead."
+                    })
+
+                # 2. Hardcoded API key in payment-gateway.ts
+                elif "payment-gateway.ts" in fd.file and "sk_live_" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "error",
+                        "message": "Security issue: Hardcoded Stripe live API key detected. Sensitive credentials should never be committed to source control. Move this to an environment variable or use a secrets manager."
+                    })
+
+                # 3. Date comparison timezone dependency in offer-eligibility.ts
+                elif "offer-eligibility.ts" in fd.file and "new Date()" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "warning",
+                        "message": "Timezone issue: Comparing `offer.expiryDate` against `new Date()` uses the server's local timezone, which might cause inconsistent eligibility checks depending on where the application is deployed. Consider using UTC dates or an explicit timezone library."
+                    })
+
+                # 4. Notification service un-awaited / non-concurred loop fetch
+                elif "notification-service.ts" in fd.file and "await fetch" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "warning",
+                        "message": "Performance issue: Sending notifications sequentially using `await fetch` inside a loop will be slow for large lists of users. Consider using `Promise.all` with a concurrency limit (e.g. p-limit) or a background queue to send notifications asynchronously."
+                    })
+
+                # 5. Hardcoded confidence threshold in compound-agent.ts
+                elif "compound-agent.ts" in fd.file and "obs.confidence < 0.7" in content:
+                    reviews.append({
+                        "file": fd.file,
+                        "line": line.new_line_number,
+                        "level": "notice",
+                        "message": "Code smell: Hardcoded confidence threshold value `0.7`. Consider moving this threshold to a config file or environment variable so it can be tuned without changing the code."
+                    })
+
+    if not reviews:
+        for fd in file_diffs:
+            if fd.is_deleted:
+                continue
+            first_added = next((l for l in fd.hunks[0].lines if l.type == "added" and l.new_line_number), None) if fd.hunks else None
+            if first_added and first_added.new_line_number:
+                reviews.append({
+                    "file": fd.file,
+                    "line": first_added.new_line_number,
+                    "level": "notice",
+                    "message": "Code change looks solid. Please ensure appropriate unit tests are updated to cover this new logic."
+                })
+                break
+
+    return {"reviews": reviews}
+
 
 # Recursive list files helper
 def list_files(dir_path: str = ".") -> list[str]:
@@ -100,7 +186,7 @@ def execute_tool(tool: str, args: dict) -> str:
     except Exception as e:
         return f"Error executing tool: {e}"
 
-def run_mock_developer_agent(issue_title: str, issue_body: str) -> str:
+def run_mock_developer_agent(issue_title: str, issue_body: str) -> tuple[str, list[str]]:
     print(f"Starting mock development loop for issue: \"{issue_title}\"")
     
     mock_actions = [
@@ -185,9 +271,35 @@ router.get("/users/search", async (req: Request, res: Response) => {
             out = execute_tool(action["tool"], action["arguments"])
             print(f"Tool Output:\n{out}")
 
-    return "Fixed the SQL Injection vulnerability in `src/routes/users.ts` by introducing parameterized query parameters instead of interpolating query strings directly."
+    summary = "Fixed the SQL Injection vulnerability in `src/routes/users.ts` by introducing parameterized query parameters instead of interpolating query strings directly."
+    thoughts = [action["thought"] for action in mock_actions]
+    return summary, thoughts
 
-async def run_developer_agent(config: Config, issue_title: str, issue_body: str) -> str:
+def extract_json_objects(text: str) -> list[dict]:
+    """Extracts all valid JSON objects from a text block, handling multiple JSON lines or objects."""
+    import json
+    decoder = json.JSONDecoder()
+    pos = 0
+    objects = []
+    
+    # Strip common markdown wrapper if present
+    cleaned_text = text.replace("```json", "").replace("```", "")
+    
+    while pos < len(cleaned_text):
+        start = cleaned_text.find("{", pos)
+        if start == -1:
+            break
+        try:
+            obj, index = decoder.raw_decode(cleaned_text[start:])
+            if isinstance(obj, dict):
+                objects.append(obj)
+            pos = start + index
+        except json.JSONDecodeError:
+            pos = start + 1
+            
+    return objects
+
+async def run_developer_agent(config: Config, issue_title: str, issue_body: str) -> tuple[str, list[str]]:
     if config.mock:
         return run_mock_developer_agent(issue_title, issue_body)
 
@@ -196,6 +308,7 @@ async def run_developer_agent(config: Config, issue_title: str, issue_body: str)
         raise ValueError("API key is required for developer agent execution.")
 
     conversation_history = []
+    developer_thoughts: list[str] = []
 
     system_prompt = """You are an expert AI software developer running in a local workspace repository.
 Your task is to fix a bug or implement a feature described in a GitHub issue.
@@ -308,22 +421,14 @@ Guidelines:
 
         except Exception as e:
             print("Error calling LLM:", e)
-            return f"Failed due to LLM error: {e}"
+            return f"Failed due to LLM error: {e}", developer_thoughts
 
         if not raw_response_text:
             print("Received empty response from LLM.")
-            return "Failed: Empty response from LLM."
+            return "Failed: Empty response from LLM.", developer_thoughts
 
-        try:
-            # Robust JSON extraction
-            cleaned = raw_response_text.strip()
-            first_brace = cleaned.find("{")
-            last_brace = cleaned.rfind("}")
-            if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
-                raise ValueError("No JSON object found in LLM response.")
-            json_str = cleaned[first_brace:last_brace + 1]
-            action = json.loads(json_str)
-        except Exception as e:
+        actions = extract_json_objects(raw_response_text)
+        if not actions:
             print("Failed to parse LLM action JSON:", raw_response_text)
             conversation_history.append({
                 "role": "assistant",
@@ -331,48 +436,66 @@ Guidelines:
             })
             conversation_history.append({
                 "role": "user",
-                "content": f"Error: Your output was not valid JSON. Please reply with a single JSON object matching the schema. Error: {e}"
+                "content": "Error: Your output was not valid JSON or did not contain any JSON objects. Please reply with a single JSON object matching the schema."
             })
             continue
 
-        print(f"🤖 Thought: {action.get('thought', '')}")
-        tool = action.get("tool", "")
-        args = action.get("arguments", {})
-        print(f"Tool call: {tool}")
+        step_outputs = []
+        finished = False
+        finish_summary = ""
 
-        if tool == "finish":
-            summary = args.get("summary", "No summary provided.")
-            print(f"\n🎉 Agent finished work! Summary:\n{summary}")
-            return summary
+        for action in actions:
+            thought = action.get("thought", "")
+            if thought:
+                developer_thoughts.append(thought)
+            tool = action.get("tool", "")
+            args = action.get("arguments", {})
+            print(f"🤖 Thought: {thought}")
+            print(f"Tool call: {tool}")
 
-        # Execute tool
-        tool_output = execute_tool(tool, args)
-        print(f"Tool Output length: {len(tool_output)}")
+            if tool == "finish":
+                finished = True
+                finish_summary = args.get("summary", "No summary provided.")
+                step_outputs.append(f"Tool [finish] called. Summary: {finish_summary}")
+                break
 
-        # Append to history
+            # Execute tool
+            tool_output = execute_tool(tool, args)
+            print(f"Tool Output length: {len(tool_output)}")
+            step_outputs.append(f"Tool [{tool}] output:\n{tool_output}")
+
         conversation_history.append({
             "role": "assistant",
             "content": raw_response_text
         })
+        
+        combined_output = "\n\n".join(step_outputs)
         conversation_history.append({
             "role": "user",
-            "content": f"Tool [{tool}] output:\n{tool_output}"
+            "content": combined_output
         })
 
-    print("Reached maximum agent steps without finishing.")
-    return "Developer agent reached the maximum number of steps without calling 'finish'."
+        if finished:
+            print(f"\n🎉 Agent finished work! Summary:\n{finish_summary}")
+            return finish_summary, developer_thoughts
 
-async def run_reviewer_agent(config: Config, file_diffs: list[FileDiff], test_output: str = None) -> list[dict]:
+    print("Reached maximum agent steps without finishing.")
+    return "Developer agent reached the maximum number of steps without calling 'finish'.", developer_thoughts
+
+async def run_reviewer_agent(config: Config, file_diffs: list[FileDiff], test_output: Optional[str] = None) -> tuple[list[dict], list[str]]:
     if config.mock:
         print("Using mock code reviewer reviews...")
         mock_res = generate_mock_review(file_diffs, test_output)
-        return mock_res.get("reviews", [])
+        mock_reviews = mock_res.get("reviews", [])
+        mock_thoughts = ["Mock review thought: Analyzing git diff for potential vulnerabilities and style issues."]
+        return mock_reviews, mock_thoughts
 
     api_key = config.openrouter_api_key or config.openai_api_key or config.gemini_api_key
     if not api_key:
         raise ValueError("API key is required for reviewer agent execution.")
 
-    collected_comments = []
+    collected_comments: list[dict] = []
+    reviewer_thoughts: list[str] = []
 
     # Safe tool execution inside reviewer
     def execute_reviewer_tool(tool: str, args: dict) -> str:
@@ -539,15 +662,8 @@ Your output must be a single, raw JSON object matching this schema (with no encl
             print("Received empty response from LLM.")
             break
 
-        try:
-            cleaned = raw_response_text.strip()
-            first_brace = cleaned.find("{")
-            last_brace = cleaned.rfind("}")
-            if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
-                raise ValueError("No JSON object found in LLM response.")
-            json_str = cleaned[first_brace:last_brace + 1]
-            action = json.loads(json_str)
-        except Exception as e:
+        actions = extract_json_objects(raw_response_text)
+        if not actions:
             print("Failed to parse LLM action JSON:", raw_response_text)
             conversation_history.append({
                 "role": "assistant",
@@ -555,30 +671,47 @@ Your output must be a single, raw JSON object matching this schema (with no encl
             })
             conversation_history.append({
                 "role": "user",
-                "content": f"Error: Your output was not valid JSON. Please reply with a single JSON object matching the schema. Error: {e}"
+                "content": "Error: Your output was not valid JSON or did not contain any JSON objects. Please reply with a single JSON object matching the schema."
             })
             continue
 
-        print(f"🤖 Thought: {action.get('thought', '')}")
-        tool = action.get("tool", "")
-        args = action.get("arguments", {})
-        print(f"Tool call: {tool}")
+        step_outputs = []
+        finished = False
+        finish_summary = ""
 
-        if tool == "finish":
-            print(f"\n🎉 Reviewer finished review! Summary:\n{args.get('summary', '')}")
-            break
+        for action in actions:
+            thought = action.get("thought", "")
+            if thought:
+                reviewer_thoughts.append(thought)
+            tool = action.get("tool", "")
+            args = action.get("arguments", {})
+            print(f"🤖 Thought: {thought}")
+            print(f"Tool call: {tool}")
 
-        # Execute tool
-        tool_output = execute_reviewer_tool(tool, args)
-        print(f"Tool Output length: {len(tool_output)}")
+            if tool == "finish":
+                finished = True
+                finish_summary = args.get("summary", "")
+                step_outputs.append(f"Tool [finish] called. Summary: {finish_summary}")
+                break
+
+            # Execute tool
+            tool_output = execute_reviewer_tool(tool, args)
+            print(f"Tool Output length: {len(tool_output)}")
+            step_outputs.append(f"Tool [{tool}] output:\n{tool_output}")
 
         conversation_history.append({
             "role": "assistant",
             "content": raw_response_text
         })
+        
+        combined_output = "\n\n".join(step_outputs)
         conversation_history.append({
             "role": "user",
-            "content": f"Tool [{tool}] output:\n{tool_output}"
+            "content": combined_output
         })
 
-    return collected_comments
+        if finished:
+            print(f"\n🎉 Reviewer finished review! Summary:\n{finish_summary}")
+            break
+
+    return collected_comments, reviewer_thoughts

@@ -4,6 +4,10 @@ author: 'zakerytclarke'
 branding:
   icon: 'code'
   color: 'blue'
+outputs:
+  pr_number:
+    description: 'The number of the created Pull Request (for develop subcommand)'
+    value: ${{ steps.run-agent.outputs.pr_number }}
 inputs:
   openrouter_api_key:
     description: 'OpenRouter API Key'
@@ -36,6 +40,12 @@ inputs:
     description: 'Maximum step limit for the developer agent loop'
     required: false
     default: '30'
+  pr_number:
+    description: 'Specific Pull Request number to review'
+    required: false
+  subcommand:
+    description: 'Explicit subcommand to run (develop or review)'
+    required: false
 runs:
   using: 'composite'
   steps:
@@ -53,6 +63,7 @@ runs:
           pip install infinite-monkey-agent
         fi
     - name: Run Infinite Monkey Agent CLI
+      id: run-agent
       shell: bash
       run: |
         infinite-monkey-agent
@@ -66,3 +77,5 @@ runs:
         AI_REVIEWER_RUN_TESTS: ${{ inputs.run_tests || env.AI_REVIEWER_RUN_TESTS }}
         AI_REVIEWER_TEST_COMMAND: ${{ inputs.test_command || env.AI_REVIEWER_TEST_COMMAND }}
         AI_REVIEWER_MAX_STEPS: ${{ inputs.max_steps || env.AI_REVIEWER_MAX_STEPS }}
+        PR_NUMBER: ${{ inputs.pr_number || env.PR_NUMBER }}
+        AI_REVIEWER_SUBCOMMAND: ${{ inputs.subcommand || env.AI_REVIEWER_SUBCOMMAND }}

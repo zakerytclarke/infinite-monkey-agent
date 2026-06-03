@@ -70,8 +70,9 @@ class TestAgentAndTools(unittest.TestCase):
         async def run():
             return await run_developer_agent(config, "title", "body")
             
-        summary = asyncio.run(run())
+        summary, thoughts = asyncio.run(run())
         self.assertIn("Fixed the SQL Injection", summary)
+        self.assertTrue(len(thoughts) > 0)
 
     def test_mock_reviewer_agent(self):
         config = Config()
@@ -88,11 +89,12 @@ class TestAgentAndTools(unittest.TestCase):
         async def run():
             return await run_reviewer_agent(config, file_diffs)
             
-        comments = asyncio.run(run())
+        comments, thoughts = asyncio.run(run())
         self.assertIsInstance(comments, list)
         self.assertTrue(len(comments) > 0)
         self.assertEqual(comments[0]["file"], "src/routes/users.ts")
         self.assertEqual(comments[0]["line"], 20)
+        self.assertTrue(len(thoughts) > 0)
 
     @patch("requests.post")
     def test_agent_json_parsing_alternation(self, mock_post):
@@ -129,7 +131,7 @@ class TestAgentAndTools(unittest.TestCase):
         async def run():
             return await run_developer_agent(config, "Fix typo", "description")
 
-        summary = asyncio.run(run())
+        summary, thoughts = asyncio.run(run())
         self.assertEqual(summary, "Completed successfully.")
         
         # Verify that requests.post was called twice
@@ -164,6 +166,34 @@ class TestAgentAndTools(unittest.TestCase):
         self.assertIn("@@ -0,0 +1,2 @@", formatted)
         self.assertIn("+    1: def add(a, b):", formatted)
         self.assertIn("+    2:     return a + b", formatted)
+
+    def test_extract_json_objects(self):
+        from infinite_monkey_agent.agent import extract_json_objects
+
+        # 1. Single valid JSON
+        text = '{"thought": "done", "tool": "finish"}'
+        res = extract_json_objects(text)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["tool"], "finish")
+
+        # 2. Multiple JSON lines
+        text = '{"tool": "leaveComment", "line": 2}\n{"tool": "finish"}'
+        res = extract_json_objects(text)
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0]["tool"], "leaveComment")
+        self.assertEqual(res[1]["tool"], "finish")
+
+        # 3. Markdown wrapped JSON
+        text = 'some text before\n```json\n{"tool": "finish"}\n```\ntext after'
+        res = extract_json_objects(text)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["tool"], "finish")
+
+        # 4. Mix of invalid/text and valid JSON
+        text = 'invalid { brace {\n{"tool": "finish"}'
+        res = extract_json_objects(text)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["tool"], "finish")
 
 if __name__ == "__main__":
     unittest.main()

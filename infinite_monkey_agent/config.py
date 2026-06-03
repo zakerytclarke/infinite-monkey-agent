@@ -18,6 +18,7 @@ class Config:
         self.subcommand = None
         self.issue_file = None
         self.max_steps = 30
+        self.pr_number = None
         
         # GitHub action standard environment variables
         self.github_event_path = os.environ.get("GITHUB_EVENT_PATH")
@@ -39,6 +40,11 @@ def load_config(args=None) -> Config:
         if cmd in ("review", "develop"):
             config.subcommand = cmd
             remaining_args.pop(0)
+
+    input_subcommand = os.environ.get("INPUT_SUBCOMMAND") or os.environ.get("AI_REVIEWER_SUBCOMMAND")
+    if not config.subcommand and input_subcommand:
+        if input_subcommand.lower() in ("review", "develop"):
+            config.subcommand = input_subcommand.lower()
 
     # 2. Load from JSON config file if exists
     possible_config_files = ["ai-reviewer.json", ".ai-reviewer.json"]
@@ -95,6 +101,10 @@ def load_config(args=None) -> Config:
         except ValueError:
             pass
 
+    input_pr_number = env.get("INPUT_PR_NUMBER") or env.get("PR_NUMBER")
+    if input_pr_number:
+        config.pr_number = input_pr_number
+
     # 4. Load from CLI Arguments
     i = 0
     while i < len(remaining_args):
@@ -124,6 +134,9 @@ def load_config(args=None) -> Config:
                 config.max_steps = int(remaining_args[i + 1])
             except ValueError:
                 pass
+            i += 2
+        elif arg == "--pr-number" and i + 1 < len(remaining_args):
+            config.pr_number = remaining_args[i + 1]
             i += 2
         elif arg == "--run-tests":
             config.run_tests = True

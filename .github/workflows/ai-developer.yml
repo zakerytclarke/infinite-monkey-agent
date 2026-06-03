@@ -21,11 +21,25 @@ jobs:
 
       # Runs the action locally from the root folder (installs the python module from source)
       - name: Run AI Developer Agent
+        id: developer
         uses: ./
         with:
+          subcommand: 'develop'
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           model: 'gpt-5.4'
           run_tests: 'true'
           max_steps: '30'
+
+      - name: Run AI Code Reviewer
+        if: steps.developer.outputs.pr_number != ''
+        uses: ./
+        with:
+          subcommand: 'review'
+          pr_number: ${{ steps.developer.outputs.pr_number }}
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          model: 'gpt-5.4'
+          run_tests: 'true'

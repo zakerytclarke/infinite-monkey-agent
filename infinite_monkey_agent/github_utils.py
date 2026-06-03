@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from typing import Optional, Union
 from infinite_monkey_agent.config import Config
 from infinite_monkey_agent.git_utils import FileDiff
 
@@ -42,39 +43,45 @@ def print_workflow_annotations(annotations: list[dict]):
         msg = ann.get("message", "").replace("\n", "%0A").replace("\r", "%0D")
         print(f"::{level_str} file={file},line={line}::{msg}")
 
-def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: list[dict], test_passed: bool):
-    gh_token = config.github_token
-    gh_repo = config.github_repository
-    event_path = config.github_event_path
+def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: list[dict], test_passed: bool, reviewer_thoughts: list[str] = None) -> None:
+    gh_token: Optional[str] = config.github_token
+    gh_repo: Optional[str] = config.github_repository
+    event_path: Optional[str] = config.github_event_path
 
-    if not gh_token or not gh_repo or not event_path:
-        print("Skipping GitHub PR review posting (missing token, repository, or event path).")
+    if not gh_token or not gh_repo:
+        print("Skipping GitHub PR review posting (missing token or repository).")
         return
 
-    if not os.path.exists(event_path):
-        print(f"GitHub event file not found at: {event_path}")
-        return
+    pr_number: Union[str, int, None] = config.pr_number
+    commit_id: Optional[str] = config.github_sha
 
-    try:
-        with open(event_path, "r", encoding="utf-8") as f:
-            event = json.load(f)
-    except Exception as e:
-        print(f"Failed to parse GitHub event JSON: {e}")
-        return
+    if event_path and os.path.exists(event_path):
+        try:
+            with open(event_path, "r", encoding="utf-8") as f:
+                event = json.load(f)
+                pr_info = event.get("pull_request")
+                if pr_info:
+                    if not pr_number:
+                        pr_number = pr_info.get("number")
+                    if not commit_id:
+                        commit_id = pr_info.get("head", {}).get("sha")
+        except Exception as e:
+            print(f"Failed to parse GitHub event JSON: {e}")
 
-    pr_info = event.get("pull_request")
-    if not pr_info:
-        print("Event is not a pull request. Skipping review comment posting.")
-        return
-
-    pr_number = pr_info.get("number")
-    commit_id = pr_info.get("head", {}).get("sha") or config.github_sha
+    # Fallback to get the HEAD commit if not resolved
+    if not commit_id or commit_id in ("master", "main", ""):
+        try:
+            import subprocess
+            commit_id = subprocess.check_output(["git", "rev-parse", "HEAD"], encoding="utf-8").strip()
+        except Exception:
+            pass
 
     if not pr_number:
-        print("Could not find PR number in event payload.")
+        print("Skipping GitHub PR review posting (could not resolve PR number).")
         return
+
     if not commit_id:
-        print("Could not find HEAD commit SHA.")
+        print("Skipping GitHub PR review posting (could not resolve HEAD commit SHA).")
         return
 
     valid_annotations = filter_valid_annotations(file_diffs, annotations)
@@ -102,6 +109,12 @@ def post_github_review(config: Config, file_diffs: list[FileDiff], annotations: 
         summary_body += "LGTM! I reviewed the diff and found no issues."
     else:
         summary_body += f"I have left {len(valid_annotations)} inline suggestion(s)/comment(s) on the changes."
+
+    if reviewer_thoughts:
+        summary_body += "\n\n<details>\n<summary>🧠 Reviewer Thought Process</summary>\n\n"
+        for idx, t in enumerate(reviewer_thoughts, 1):
+            summary_body += f"**Step {idx}:** {t}\n\n"
+        summary_body += "</details>"
 
     body = {
         "commit_id": commit_id,
