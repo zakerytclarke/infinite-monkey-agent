@@ -15,16 +15,16 @@ An intelligent, lightweight, zero-dependency Python package and GitHub Action th
 
 To install the CLI tool globally or in your local python environment:
 
-```bash
+bash
 pip install infinite-monkey-agent
-```
+
 
 To run it locally in development mode from the cloned source directory:
 
-```bash
+bash
 # In the repository root
 pip install .
-```
+
 
 ---
 
@@ -35,21 +35,118 @@ Once installed, the CLI tool can be executed using the `infinite-monkey-agent` c
 ### 1. PR Code Review Mode (`review`)
 Runs a git diff against a branch and reviews code modifications.
 
-```bash
+bash
 # Review changes compared to main branch
 infinite-monkey-agent review --branch main
 
 # Run review offline on a saved .diff file (mock LLM mode)
 infinite-monkey-agent review --diff-file ./path/to/my.diff --mock
-```
+
 
 ### 2. Autonomous Developer Mode (`develop`)
 Solves an issue in a workspace loop until code compiles and tests pass.
 
-```bash
+bash
 # Run developer agent locally using a mock issue payload
 infinite-monkey-agent develop --issue-file ./issue_payload.json --mock
-```
+
+
+---
+
+## 🚀 FastAPI CRUD API
+
+This repository now also includes a simple FastAPI CRUD application for managing posts.
+
+### Features
+
+- Create a post
+- Retrieve all posts
+- Retrieve a single post by ID
+- Update a post
+- Delete a post
+- SQLite persistence
+- Automatic request/response validation with Pydantic
+- Search by title or content
+- Pagination with `skip` and `limit`
+- Sorting by newest first on the list endpoint
+
+### Post Schema
+
+Each post contains:
+
+- `id`
+- `title`
+- `content`
+- `created_at`
+- `updated_at`
+
+### Run Locally
+
+Install dependencies:
+
+bash
+pip install .
+
+
+Start the API server:
+
+bash
+uvicorn infinite_monkey_agent.api:app --reload
+
+
+The API will be available at:
+
+- `http://127.0.0.1:8000`
+- Interactive docs: `http://127.0.0.1:8000/docs`
+- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
+
+### Example Requests
+
+Create a post:
+
+bash
+curl -X POST http://127.0.0.1:8000/posts \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My First Post","content":"Hello world"}'
+
+
+Get all posts:
+
+bash
+curl http://127.0.0.1:8000/posts
+
+
+Search posts:
+
+bash
+curl "http://127.0.0.1:8000/posts?search=hello"
+
+
+Paginate posts:
+
+bash
+curl "http://127.0.0.1:8000/posts?skip=0&limit=10"
+
+
+Get a single post:
+
+bash
+curl http://127.0.0.1:8000/posts/1
+
+
+Update a post:
+
+bash
+curl -X PUT http://127.0.0.1:8000/posts/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Updated Title","content":"Updated Content"}'
+
+
+Delete a post:
+
+bash
+curl -X DELETE http://127.0.0.1:8000/posts/1
+
 
 ---
 
@@ -60,7 +157,7 @@ Add these workflows under `.github/workflows/` in your target repository:
 ### 📋 1. Pull Request Code Review (`.github/workflows/ai-review.yml`)
 Runs whenever a PR is opened or updated, executing tests and placing comments on lines with issues.
 
-```yaml
+yaml
 name: AI Pull Request Reviewer
 
 on:
@@ -86,12 +183,12 @@ jobs:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           model: 'gpt-5.4'
           run_tests: 'true'
-```
+
 
 ### 🚀 2. Autonomous Issue Developer (`.github/workflows/ai-developer.yml`)
 Runs when a new issue is opened. The developer agent checks out code, runs a loop to implement modifications, pushes a branch, and opens a Pull Request.
 
-```yaml
+yaml
 name: AI Issue Developer
 
 on:
@@ -119,7 +216,7 @@ jobs:
           model: 'gpt-5.4'
           run_tests: 'true'
           max_steps: '30' # Limit development loops to control execution time
-```
+
 
 ---
 
